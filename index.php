@@ -43,6 +43,23 @@ if (! $installed || str_starts_with($uri, '/install')) {
     }
 }
 
+// ── Planned maintenance — before ANY DB work: the flag file exists so
+//    sites get a fast 503 (not a hang) even when the DB itself is the
+//    thing under maintenance. LicenseApi re-checks for good measure.
+if (str_starts_with($uri, '/api/')
+    && $installed
+    && (is_file(__DIR__ . '/data/.maintenance') || ! empty($config['maintenance']))) {
+    header('Retry-After: 300');
+    header('Content-Type: application/json');
+    http_response_code(503);
+    echo json_encode([
+        'status'      => false,
+        'status_code' => 'SERVER_UNAVAILABLE',
+        'message'     => 'License server is temporarily unavailable for maintenance.',
+    ]);
+    exit;
+}
+
 // ── Session (admin panel only) ──────────────────────────────────────
 if (str_starts_with($uri, '/admin-api') || $uri === '/' || ! str_starts_with($uri, '/api')) {
     session_name($config['session_name'] ?? 'ezitls');

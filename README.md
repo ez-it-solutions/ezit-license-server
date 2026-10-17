@@ -24,6 +24,10 @@ only `platform/core/core.json` is repointed.
 6. On the client site: `Settings → General → License` (or `php artisan cms:license:activate --buyer="Site Name" --purchase_code="CODE"`).
 7. Delete or password-protect `/install` after setup.
 
+**Upgrading an existing install:** upload the files — the schema auto-migrates
+(`products.recovery_code` is added and backfilled on the next request). Each
+product's recovery code then appears in **Products → Recovery code**.
+
 ## Architecture
 
 | Piece | File |
@@ -68,12 +72,38 @@ Max-activations overflow returns `status_code: "ACTIVATED_MAXIMUM_ALLOWED_PRODUC
 
 ```
 <64-char HMAC-SHA256 hex><base64url(JSON)>
-JSON = {license_code, product_id, client_name, domain, ip, activated_at, expires_at, issuer}
+JSON = {license_code, product_id, client_name, domain, ip, activated_at,
+        expires_at, issuer, recovery_digest}
 HMAC key = server_secret | product api_key   (config/config.php → server_secret)
 ```
 
 Tamper-evident: editing the payload, moving to another product, or re-signing without the
 secret fails `hash_equals` verification.
+
+## Maintenance mode
+
+Dashboard → **Server Config → Maintenance mode** flips a `data/.maintenance`
+flag file (or set `'maintenance' => true` in `config/config.php`). While on,
+every `/api/*` call short-circuits with **503 `SERVER_UNAVAILABLE` +
+`Retry-After: 300`** — *before* any DB connection, so it still answers cleanly
+when the database itself is what you're servicing. Client sites read this as
+"planned maintenance": they keep their last verdict and re-check on the
+`Retry-After` schedule instead of treating it as a denial.
+
+The admin panel stays reachable (the flag only affects `/api/*`), but if the
+DB is down you toggle the flag by hand: `touch data/.maintenance` on,
+`rm data/.maintenance` off.
+
+## Recovery codes (offline site override)
+
+Each product gets a generated `recovery_code` visible in **Products →
+Recovery code**. Sites never store the code — they store/derive
+`recovery_digest = HMAC-SHA256("recovery|" + code, api_key)`, delivered inside
+the signed cert payload and every `verify_license` response.
+
+Ez IT Core uses it to arm a time-limited emergency gate override (force
+open/closed) **entirely offline** — the whole point is it still works while
+this server is down. Rotating a product's `api_key` rotates the digest.
 
 ## Activation rules
 
@@ -90,6 +120,10 @@ secret fails `hash_equals` verification.
   admin login 8/10 min → HTTP 429) keyed on `REMOTE_ADDR`, never client headers.
 - `license-push` carries **no verdict** — a forged push can trigger at most a
   re-verify, never disable a site. Full threat model: `docs/LICENSE-SERVER.md` §1a.
+- **Recovery codes never leave this box** — sites hold only the HMAC digest, so
+  a dumped site DB can't yield a code that arms overrides elsewhere.
+- Maintenance mode is **not** a denial path: sites distinguish it from
+  `status:false` verdicts, so flipping it can't accidentally gate anyone.
 
 ### File permissions (production)
 
