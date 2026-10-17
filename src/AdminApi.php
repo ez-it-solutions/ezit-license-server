@@ -481,15 +481,23 @@ final class AdminApi
 
     private function listActivations(): void
     {
-        $rows = $this->db->query(
-            'SELECT a.*, l.code AS license_code, l.client_name, p.name AS product_name
+        $q = trim((string) ($_GET['q'] ?? ''));
+
+        $sql = 'SELECT a.*, l.code AS license_code, l.client_name, p.name AS product_name
              FROM activations a
              JOIN licenses l ON l.id = a.license_id
-             JOIN products p ON p.id = l.product_id
-             ORDER BY a.last_check_at DESC LIMIT 500'
-        )->fetchAll();
+             JOIN products p ON p.id = l.product_id';
+        $args = [];
+        if ($q !== '') {
+            $sql .= ' WHERE a.domain LIKE ? OR l.code LIKE ? OR l.client_name LIKE ? OR p.name LIKE ? OR a.ip LIKE ?';
+            $args = array_fill(0, 5, '%' . $q . '%');
+        }
+        $sql .= ' ORDER BY a.last_check_at DESC LIMIT 500';
 
-        $this->json(['data' => $rows]);
+        $st = $this->db->prepare($sql);
+        $st->execute($args);
+
+        $this->json(['data' => $st->fetchAll()]);
     }
 
     private function updateActivation(int $id): void

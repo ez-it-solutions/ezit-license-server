@@ -40,6 +40,12 @@
         if (s < 86400) return Math.floor(s / 3600) + 'h ago';
         return d.toLocaleDateString();
     };
+    // Absolute timestamp: "10/16/2026 14:32:07" — full date AND time.
+    const dt = (ts) => {
+        if (!ts) return '—';
+        const d = new Date(ts.replace(' ', 'T') + 'Z');
+        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString(undefined, { hour12: false });
+    };
     const badge = (status) => `<span class="badge badge-${esc(status)}">${esc(status)}</span>`;
     const okBadge = (ok) => ok ? '<span class="badge badge-ok">ok</span>' : '<span class="badge badge-fail">fail</span>';
 
@@ -139,6 +145,7 @@
             history.replaceState({}, '', ROUTES[legacy] ? '/' + legacy : '/');
         }
         navigate(location.pathname.slice(1) || 'dashboard');
+        loadTopStatus();
     }
 
     $('#login-form').addEventListener('submit', async (e) => {
@@ -172,7 +179,6 @@
     $$('.nav-link').forEach((a) => a.addEventListener('click', () => navigate(a.dataset.nav)));
 
     const VIEWS = { dashboard: loadDashboard, licenses: loadLicenses, products: loadProducts, updates: loadUpdates, logs: loadLogs, config: loadConfig, account: () => {} };
-    const TITLES = { dashboard: 'Dashboard', licenses: 'Licenses', products: 'Products', updates: 'Update packages', logs: 'Activity log', config: 'Server config', account: 'Account' };
 
     // URL slug → {view, tab}. 'config' stays routable for old links but
     // canonicalizes to 'server-config' — /config collides with the
@@ -208,6 +214,45 @@
     }
     $$('.tab').forEach((b) => b.addEventListener('click', () => openTab(b.dataset.tab)));
 
+    /* ── sortable headers — every table, client-side ── */
+    (function initTableSort() {
+        $$('table thead').forEach((thead) => {
+            const table = thead.closest('table');
+            const tbody = table.tBodies[0];
+            if (!tbody) return;
+            thead.querySelectorAll('th').forEach((th) => {
+                if (th.textContent.trim()) th.classList.add('sortable');
+            });
+            thead.addEventListener('click', (e) => {
+                const th = e.target.closest('th');
+                if (!th || !th.textContent.trim()) return;
+                const idx = th.cellIndex;
+                const dir = th.dataset.sort === 'asc' ? 'desc' : 'asc';
+                thead.querySelectorAll('th[data-sort]').forEach((h) => { h.classList.remove('sort-asc', 'sort-desc'); delete h.dataset.sort; });
+                th.dataset.sort = dir;
+                th.classList.add('sort-' + dir);
+                const rows = [...tbody.rows];
+                const data = rows.filter((r) => r.cells.length > 1);
+                const tail = rows.filter((r) => r.cells.length <= 1); // empty-state colspan rows stay at the bottom
+                const val = (r) => {
+                    const c = r.cells[idx];
+                    // data-sort wins — timestamp cells carry their ISO value
+                    // so "time" columns sort chronologically, not lexically.
+                    return c ? (c.dataset.sort !== undefined ? c.dataset.sort : c.textContent.trim()) : '';
+                };
+                const NUM = /^-?[\d.,]+%?$/;
+                data.sort((a, b) => {
+                    const x = val(a), y = val(b);
+                    const cmp = (NUM.test(x) && NUM.test(y))
+                        ? parseFloat(x.replace(/,/g, '')) - parseFloat(y.replace(/,/g, ''))
+                        : x.localeCompare(y, undefined, { numeric: true, sensitivity: 'base' });
+                    return dir === 'asc' ? cmp : -cmp;
+                });
+                [...data, ...tail].forEach((r) => tbody.appendChild(r));
+            });
+        });
+    })();
+
     function navigate(slug) {
         const r = ROUTES[slug] || ROUTES.dashboard;
         const canonical = r.tab ? slug : SLUG[r.view]; // tab slugs keep their own URL
@@ -218,25 +263,29 @@
         $$('.nav-link').forEach((a) => a.classList.toggle('active', a.dataset.nav === r.view));
         $$('.view').forEach((v) => v.classList.add('hidden'));
         $('#view-' + r.view).classList.remove('hidden');
-        $('#topbar-title').textContent = TITLES[r.view];
         VIEWS[r.view]();
         if (r.tab) openTab(r.tab);
     }
     window.addEventListener('popstate', () => navigate(location.pathname.slice(1) || 'dashboard'));
 
     /* ── dashboard ── */
+    $('#stat-grid').addEventListener('click', (e) => {
+        const card = e.target.closest('[data-go]');
+        if (card) navigate(card.dataset.go);
+    });
+
     async function loadDashboard() {
         const s = await api('stats');
         $('#stat-grid').innerHTML = [
-            [s.products, 'Products'],
-            [s.licenses, 'Licenses'],
-            [s.active_licenses, 'Active licenses'],
-            [s.activations, 'Live activations'],
-            [s.checks_24h, 'Checks (24h)'],
-        ].map(([n, l]) => `<div class="stat"><div class="num">${n}</div><div class="lbl">${l}</div></div>`).join('');
+            [s.products, 'Products', 'products'],
+            [s.licenses, 'Licenses', 'licenses'],
+            [s.active_licenses, 'Active licenses', 'licenses'],
+            [s.activations, 'Live activations', 'activations'],
+            [s.checks_24h, 'Checks (24h)', 'logs'],
+        ].map(([n, l, go]) => `<a class="stat stat-link" data-go="${go}"><div class="num">${n}</div><div class="lbl">${l}</div></a>`).join('');
 
         $('#recent-table tbody').innerHTML = s.recent_activity.length
-            ? s.recent_activity.map((r) => `<tr><td>${esc(r.action)}</td><td class="mono">${esc(r.domain || r.ip || r.detail || '—')}</td><td>${okBadge(!!r.success)}</td><td>${ago(r.created_at)}</td></tr>`).join('')
+            ? s.recent_activity.map((r) => `<tr><td>${esc(r.action)}</td><td class="mono">${esc(r.domain || r.ip || r.detail || '—')}</td><td>${okBadge(!!r.success)}</td><td data-sort="${esc(r.created_at)}">${ago(r.created_at)}</td></tr>`).join('')
             : '<tr><td colspan="4" class="empty">No activity yet</td></tr>';
     }
 
@@ -394,7 +443,7 @@
             }
             $('#cfg-history-table tbody').innerHTML = r.history.length
                 ? r.history.map((h) =>
-                    `<tr><td class="mono">v${h.version}</td><td>${esc(h.note || '—')}</td><td>${ago(h.published_at)}</td>` +
+                    `<tr><td class="mono">v${h.version}</td><td>${esc(h.note || '—')}</td><td data-sort="${esc(h.published_at)}">${ago(h.published_at)}</td>` +
                     `<td class="row-actions"><button class="btn btn-ghost btn-sm cfg-view" data-id="${h.id}">Load</button></td></tr>`
                 ).join('')
                 : '<tr><td colspan="4" class="empty">No published configs.</td></tr>';
@@ -410,6 +459,7 @@
         }
         try {
             const m = await api('maintenance');
+            setTopStatus(m);
             $('#maint-state').textContent = m.maintenance
                 ? 'ON — all public API calls return 503 SERVER_UNAVAILABLE instantly' + (m.since ? ' (since ' + m.since + ')' : '')
                 : 'OFF — public API is serving normally';
@@ -417,7 +467,30 @@
             $('#maint-toggle').className = 'btn ' + (m.maintenance ? 'btn-primary' : 'btn-danger');
         } catch (e2) {
             $('#maint-state').textContent = 'status unknown: ' + e2.message;
+            setTopStatus(null);
         }
+    }
+
+    /* ── topbar status pill — fleet-wide API health at a glance ── */
+    function setTopStatus(m) {
+        const el = $('#top-status');
+        if (!m) {
+            el.textContent = 'API status unknown';
+            el.className = 'status-pill status-muted';
+            el.title = 'Could not read maintenance/API state';
+            return;
+        }
+        el.textContent = m.maintenance ? '⚠ Maintenance mode' : '● API online';
+        el.className = 'status-pill ' + (m.maintenance ? 'status-warn' : 'status-ok');
+        el.title = m.maintenance
+            ? 'All public license calls return 503' + (m.since ? ' — since ' + m.since : '')
+            : 'Public API is serving license calls normally';
+    }
+
+    async function loadTopStatus() {
+        try {
+            setTopStatus(await api('maintenance'));
+        } catch { setTopStatus(null); }
     }
 
     $('#maint-toggle').addEventListener('click', async () => {
@@ -466,7 +539,7 @@
             ? r.data.map((u) => `<tr>
                 <td class="mono">${esc(u.username)}</td>
                 <td>${esc(u.name || '—')}</td>
-                <td>${ago(u.created_at)}</td>
+                <td data-sort="${esc(u.created_at)}">${ago(u.created_at)}</td>
                 <td><div class="row-actions"><button class="btn btn-danger btn-sm" onclick="EZL.deleteUser(${u.id})">Remove</button></div></td></tr>`).join('')
             : '<tr><td colspan="4" class="empty">No gate users for this license</td></tr>';
     }
@@ -600,8 +673,15 @@
     });
 
     /* ── activations ── */
+    let actQTimer = null;
+    $('#act-search').addEventListener('input', () => {
+        clearTimeout(actQTimer);
+        actQTimer = setTimeout(loadActivations, 300); // debounce typing
+    });
+
     async function loadActivations() {
-        const r = await api('activations');
+        const q = $('#act-search').value.trim();
+        const r = await api('activations' + (q ? '?q=' + encodeURIComponent(q) : ''));
         $('#activations-table tbody').innerHTML = r.data.length
             ? r.data.map((a) => `<tr>
                 <td class="mono">${esc(a.domain)}</td>
@@ -610,8 +690,8 @@
                 <td>${esc(a.product_name)}</td>
                 <td class="mono">${esc(a.ip || '—')}</td>
                 <td>${badge(a.status || 'enabled')}</td>
-                <td>${ago(a.activated_at)}</td>
-                <td>${ago(a.last_check_at)}</td>
+                <td data-sort="${esc(a.activated_at)}">${ago(a.activated_at)}</td>
+                <td data-sort="${esc(a.last_check_at)}">${ago(a.last_check_at)}</td>
                 <td><div class="row-actions">
                     <button class="btn" onclick="EZL.toggleActivation(${a.id}, '${a.status || 'enabled'}')">${(a.status || 'enabled') === 'enabled' ? 'Disable' : 'Enable'}</button>
                     <button class="btn btn-danger" onclick="EZL.deleteActivation(${a.id})">Revoke</button>
@@ -746,7 +826,7 @@
             logPage = r.page;
             logRows = r.data;
             $('#logs-table tbody').innerHTML = r.data.map((l, i) => `<tr data-i="${i}">
-                <td>${ago(l.created_at)}</td>
+                <td class="mono" data-sort="${esc(l.created_at)}" title="${ago(l.created_at)}">${dt(l.created_at)}</td>
                 <td>${esc(l.action)}</td>
                 <td class="mono">${esc(l.license_code || '—')}</td>
                 <td class="mono">${esc(l.domain || '—')}</td>
@@ -781,14 +861,15 @@
         loadLogRules();
     }
 
-    // Windowed page list, Google-style: 1 … p-2 p-1 [p] p+1 p+2 … N
+    // Windowed page list, Google-style: 1 … p-2 p-1 [p] p+1 p+2 … N.
+    // Each gap is {lo,hi} — clicking it opens a dropdown of that range.
     function pagerItems(page, pages) {
         if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
         const lo = Math.max(2, page - 2), hi = Math.min(pages - 1, page + 2);
         const items = [1];
-        if (lo > 2) items.push('…');
+        if (lo > 2) items.push({ lo: 2, hi: lo - 1 });
         for (let i = lo; i <= hi; i++) items.push(i);
-        if (hi < pages - 1) items.push('…');
+        if (hi < pages - 1) items.push({ lo: hi + 1, hi: pages - 1 });
         items.push(pages);
         return items;
     }
@@ -799,14 +880,48 @@
         $('#logs-page-sel').innerHTML = Array.from({ length: pages }, (_, i) =>
             `<option value="${i + 1}"${i + 1 === page ? ' selected' : ''}>${i + 1}</option>`).join('');
         $('#logs-pages-n').textContent = pages;
-        // Right: ‹ 1 … numbers … N ›
-        $('#logs-pager').innerHTML =
+        // ‹ 1 … numbers … N › — mirrored top and bottom of the table
+        const btns =
             `<button class="pg" data-pg="${page - 1}"${page <= 1 ? ' disabled' : ''} aria-label="Previous page">‹</button>` +
-            pagerItems(page, pages).map((it) => it === '…'
-                ? '<span class="pg-ell">…</span>'
+            pagerItems(page, pages).map((it) => typeof it === 'object'
+                ? `<button class="pg pg-gap" data-lo="${it.lo}" data-hi="${it.hi}" title="Jump to a page in this range">…</button>`
                 : `<button class="pg${it === page ? ' active' : ''}" data-pg="${it}">${it}</button>`).join('') +
             `<button class="pg" data-pg="${page + 1}"${page >= pages ? ' disabled' : ''} aria-label="Next page">›</button>`;
+        $('#logs-pager').innerHTML = btns;
+        $('#logs-pager-top').innerHTML = btns;
     }
+
+    /* ── page-gap dropdown — click a "…" to pick a page in that range ── */
+    const pgDrop = document.createElement('div');
+    pgDrop.id = 'pg-drop';
+    pgDrop.className = 'pg-drop hidden';
+    document.body.appendChild(pgDrop);
+
+    function hidePageDrop() { pgDrop.classList.add('hidden'); }
+
+    function showPageDrop(btn) {
+        const lo = +btn.dataset.lo, hi = +btn.dataset.hi;
+        pgDrop.innerHTML = '';
+        for (let p = lo; p <= hi; p++) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pg-drop-item' + (p === logPage ? ' active' : '');
+            b.textContent = p;
+            b.addEventListener('click', () => { hidePageDrop(); goLogPage(p); });
+            pgDrop.appendChild(b);
+        }
+        pgDrop.classList.remove('hidden');
+        const r = btn.getBoundingClientRect();
+        let left = r.left + r.width / 2 - pgDrop.offsetWidth / 2;
+        left = Math.max(8, Math.min(left, innerWidth - pgDrop.offsetWidth - 8));
+        const top = (r.top - pgDrop.offsetHeight - 6) >= 8 ? r.top - pgDrop.offsetHeight - 6 : r.bottom + 6;
+        pgDrop.style.left = left + 'px';
+        pgDrop.style.top = top + 'px';
+    }
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#pg-drop') && !e.target.closest('.pg-gap')) hidePageDrop();
+    });
 
     function goLogPage(p) {
         logPage = p;
@@ -886,11 +1001,20 @@
     });
 
     const resetLogs = () => { logPage = 1; loadLogs(); };
-    $('#logs-pager').addEventListener('click', (e) => {
+    const onPagerClick = (e) => {
+        const gap = e.target.closest('.pg-gap');
+        if (gap) {
+            if (gap.classList.contains('open')) { hidePageDrop(); gap.classList.remove('open'); }
+            else { $$('.pg-gap.open').forEach((b) => b.classList.remove('open')); gap.classList.add('open'); showPageDrop(gap); }
+            return;
+        }
         const b = e.target.closest('.pg');
         if (!b || b.disabled) return;
+        hidePageDrop();
         goLogPage(+b.dataset.pg);
-    });
+    };
+    $('#logs-pager').addEventListener('click', onPagerClick);
+    $('#logs-pager-top').addEventListener('click', onPagerClick);
     $('#logs-page-sel').addEventListener('change', (e) => goLogPage(+e.target.value));
     $('#logs-action').addEventListener('change', resetLogs);
     $('#logs-result').addEventListener('change', resetLogs);

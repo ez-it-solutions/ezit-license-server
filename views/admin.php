@@ -62,7 +62,7 @@
 
     <main class="main">
         <header class="topbar">
-            <h2 class="topbar-title" id="topbar-title">Dashboard</h2>
+            <div class="top-status"><span id="top-status" class="status-pill status-muted" title="Public API state">Checking…</span></div>
             <div class="top-actions">
                 <button id="theme-toggle" class="top-icon" type="button" title="Toggle theme" aria-label="Toggle theme"></button>
                 <div class="top-user">
@@ -117,6 +117,9 @@
                 </table></div>
             </div>
             <div id="tab-activations-list" class="tab-pane hidden">
+                <div class="pane-actions">
+                    <input id="act-search" class="input-sm" placeholder="Search domain / license / client / IP…">
+                </div>
                 <div class="panel"><table id="activations-table">
                     <thead><tr><th>Domain</th><th>License</th><th>Client</th><th>Product</th><th>IP</th><th>Status</th><th>Activated</th><th>Last check</th><th></th></tr></thead>
                     <tbody></tbody>
@@ -185,6 +188,9 @@
                 <button class="tab" data-tab="log-retention" type="button">Retention rules</button>
             </div>
             <div id="tab-log-activity" class="tab-pane">
+                <div class="pager pager-top">
+                    <div class="pager-btns" id="logs-pager-top"></div>
+                </div>
                 <div class="panel"><table id="logs-table">
                     <thead><tr><th>Time</th><th>Action</th><th>License</th><th>Domain</th><th>IP</th><th>Result</th><th>Detail</th></tr></thead>
                     <tbody></tbody>
