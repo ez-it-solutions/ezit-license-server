@@ -198,8 +198,9 @@ pre .k{color:#8fa386}pre .s{color:#a8d47a}pre .n{color:#e0b56a}pre .c{color:#5f7
   <div class="chips">
     <span class="chip"><b>9</b> site endpoints</span>
     <span class="chip"><b>1</b> push channel</span>
-    <span class="chip"><b>13</b> admin routes</span>
+    <span class="chip"><b>14</b> admin routes</span>
     <span class="chip">HMAC-signed certs &amp; tokens</span>
+    <span class="chip">503 maintenance + Retry-After</span>
     <span class="chip">Per-IP throttles</span>
   </div>
 </section>
@@ -268,6 +269,7 @@ pre .k{color:#8fa386}pre .s{color:#a8d47a}pre .n{color:#e0b56a}pre .c{color:#5f7
         <tr><td class="mono secret">license_code</td><td>license holder (inside the cert)</td><td>Activate/deactivate that license, access_login, Mode-B revoke.</td></tr>
         <tr><td class="mono secret">license_file (cert)</td><td>site only</td><td>Echo-verified each call; HMAC <code>sha256(secret|api_key)</code> — can't be edited or moved between products/domains.</td></tr>
         <tr><td class="mono secret">admin session + CSRF</td><td>admin SPA only</td><td>Full dashboard: suspend licenses, disable products/activations.</td></tr>
+        <tr><td class="mono secret">recovery_code</td><td>license server dashboard only</td><td>Arms a site's emergency gate override <b>offline</b> — the site only ever stores <code>recovery_digest = HMAC-SHA256("recovery|"+code, api_key)</code>, so the raw code can't leak from a site DB.</td></tr>
       </tbody>
     </table>
   </div>
@@ -300,6 +302,7 @@ pre .k{color:#8fa386}pre .s{color:#a8d47a}pre .n{color:#e0b56a}pre .c{color:#5f7
         <tr><td class="mono">ACTIVATION_DISABLED</td><td>This domain's activation row disabled → "enter a different code" flow.</td></tr>
         <tr><td class="mono">DOMAIN_NOT_ACTIVATED</td><td>Cert's bound domain ≠ request's <code>LB-URL</code> domain.</td></tr>
         <tr><td class="mono">ACTIVATED_MAXIMUM_ALLOWED_PRODUCT_INSTANCES</td><td>Seat limit reached.</td></tr>
+        <tr><td class="mono">SERVER_UNAVAILABLE</td><td>HTTP 503 — <b>planned maintenance</b>, not a denial. Carries <code>Retry-After</code>; sites keep their last verdict and re-check on that schedule.</td></tr>
         <tr><td class="mono">HTTP 429</td><td>Per-IP failure throttle tripped.</td></tr>
       </tbody>
     </table>
@@ -319,6 +322,8 @@ pre .k{color:#8fa386}pre .s{color:#a8d47a}pre .n{color:#e0b56a}pre .c{color:#5f7
         <tr><td>Domain spoofing (<code>LB-URL</code>)</td><td>Domain is bound into the cert at activation; verify rejects mismatches.</td></tr>
         <tr><td>Cert forgery / replay</td><td>HMAC <code>server_secret|api_key</code>; domain + product pinned inside.</td></tr>
         <tr><td>Brute force (codes / passwords / admin)</td><td>Per-IP failure throttles → 429; IP from TCP peer, never headers.</td></tr>
+        <tr><td>Maintenance read as denial</td><td>503 + <code>SERVER_UNAVAILABLE</code> is classified planned maintenance — sites preserve their verdict instead of gating.</td></tr>
+        <tr><td>Recovery code lifted from a site DB</td><td>Site stores only the digest; the raw code never leaves the server's Products panel.</td></tr>
         <tr><td>Push as SSRF</td><td>http(s)-only targets; redirects never followed, so keys can't be relayed.</td></tr>
       </tbody>
     </table>
@@ -358,7 +363,7 @@ const ENDPOINTS=[
  params:[],ok:{status:true,message:'Connected to EzIT License Server',server_time:'2026-10-17 15:42:00'},
  codes:['INVALID_API_KEY','PRODUCT_DISABLED']},
 {group:'Site → Server',id:'activate_license',m:'POST',path:'/api/activate_license',
- desc:'Bind a license to this domain. Idempotent — re-activating refreshes the cert. Throttled 10 fails/IP/10min.',
+ desc:'Bind a license to this domain. Idempotent — re-activating refreshes the cert. The cert payload now also carries recovery_digest for offline overrides. Throttled 10 fails/IP/10min.',
  params:[
   ['product_id','string','Product ID from the dashboard (must match the api_key product)'],
   ['license_code','string','Customer license code'],
@@ -366,10 +371,10 @@ const ENDPOINTS=[
  ok:{status:true,lic_response:'<64-hex-hmac><base64url cert>',message:'License activated.'},
  codes:['PRODUCT_DISABLED','LICENSE_SUSPENDED','LICENSE_INACTIVE','LICENSE_EXPIRED','ACTIVATION_DISABLED','ACTIVATED_MAXIMUM_ALLOWED_PRODUCT_INSTANCES','HTTP 400','HTTP 429']},
 {group:'Site → Server',id:'verify_license',m:'POST',path:'/api/verify_license',
- desc:'The verdict call — echoes the cert back; server checks license + activation + domain. config_version hints the site to re-read get_config.',
+ desc:'The verdict call — echoes the cert back; server checks license + activation + domain. config_version hints the site to re-read get_config; recovery_digest keeps the offline override digest fresh.',
  params:[['license_file','string','Stored cert verbatim']],
- ok:{status:true,expires_at:null,config_version:3,message:'License verified.'},
- codes:['PRODUCT_DISABLED','ACTIVATION_DISABLED','DOMAIN_NOT_ACTIVATED','LICENSE_SUSPENDED','LICENSE_INACTIVE','LICENSE_EXPIRED']},
+ ok:{status:true,expires_at:null,recovery_digest:'<64-hex hmac>',config_version:3,message:'License verified.'},
+ codes:['PRODUCT_DISABLED','ACTIVATION_DISABLED','DOMAIN_NOT_ACTIVATED','LICENSE_SUSPENDED','LICENSE_INACTIVE','LICENSE_EXPIRED','SERVER_UNAVAILABLE']},
 {group:'Site → Server',id:'deactivate_license',m:'POST',path:'/api/deactivate_license',
  desc:'Mode A {license_file}: free this domain\'s seat. Mode B {license_code}: revoke ALL activations of the license (queues pushes first).',
  params:[['license_file','string','Mode A — self-deactivate'],['license_code','string','Mode B — revoke every activation'],['client_name','string','Mode B — matching name']],
@@ -413,6 +418,10 @@ const ENDPOINTS=[
  desc:'Paginated activity log. per 10–200; returns rows + total + distinct action names.',
  params:[],ok:{data:[{action:'verify',domain:'site.com',ip:'1.2.3.4',success:1,created_at:'…'}],total:1204,page:1,pages:25,actions:['activate','verify','push']},
  codes:['HTTP 401','HTTP 419'],admin:true},
+{group:'Admin API (session + CSRF)',id:'admin-maintenance',m:'GET/PUT',path:'/admin-api/maintenance',
+ desc:'Planned-maintenance switch (Server Config panel). GET reads state; PUT {enabled:true} writes data/.maintenance — a file flag so it still answers 503 SERVER_UNAVAILABLE + Retry-After even if the DB is down.',
+ params:[['enabled','bool','PUT only']],
+ ok:{ok:true,maintenance:true},codes:['HTTP 401','HTTP 419'],admin:true},
 {group:'Admin API (session + CSRF)',id:'admin-mutations',m:'CRUD',path:'/admin-api/{products|licenses|activations|config}',
  desc:'CRUD for products (key regen), licenses, activations (enable/disable/revoke), gate users, config publish+history. Every mutation that changes license state queues a license-push fan-out.',
  params:[],ok:{ok:true},codes:['HTTP 401','HTTP 419'],admin:true},
