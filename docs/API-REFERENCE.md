@@ -61,11 +61,16 @@ other `status_code` is authoritative.
 The site stores it verbatim and echoes it back; it cannot be edited or
 moved to another domain/product.
 
-`recovery_digest` = `HMAC-SHA256("recovery|" + recovery_code, api_key)`.
-Each product has a recovery code (dashboard → Products → Recovery code);
-the raw code never crosses the wire. A site validates an entered code
-offline by recomputing the digest — this is what arms the site's
-emergency gate override while the server is down.
+`recovery_digest` = `HMAC-SHA256("recovery|" + UPPERCASE(trim(recovery_code)), api_key)`
+— same uppercase+trim normalization clients apply before hashing.
+Each product has a recovery code (dashboard → Products → Recovery);
+the raw code is **shown once** at generation/regeneration and stored
+only as a sha256 hash + this digest — it never crosses the wire. A site
+validates an entered code offline by recomputing the digest — this is
+what arms the site's emergency gate override while the server is down.
+Rotating a product's `api_key` rotates the digest (a fresh code is
+minted and shown once); admins can also regenerate via
+`POST /admin-api/products/{id}/recovery-code`.
 
 ---
 

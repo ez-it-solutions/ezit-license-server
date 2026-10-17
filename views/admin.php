@@ -259,6 +259,18 @@
     </div>
 </div>
 
+<!-- ─────────────── Recovery code modal (shown ONCE — stored hashed) ─────────────── -->
+<div id="code-modal" class="modal hidden">
+    <div class="modal-card">
+        <h2 id="code-title">Recovery code</h2>
+        <p class="hint" id="code-note">Shown once — the server stores only its hash. Save it somewhere safe; it arms a site's emergency gate override while this server is offline.</p>
+        <div class="input-btn"><input id="code-value" class="mono" readonly><button type="button" class="btn btn-ghost btn-sm" id="code-copy">Copy</button></div>
+        <div class="modal-actions">
+            <button class="btn btn-primary" data-close>Done</button>
+        </div>
+    </div>
+</div>
+
 <div id="toast" class="toast hidden"></div>
 <script src="/assets/js/admin.js?v=<?= filemtime(__DIR__ . '/../assets/js/admin.js') ?>"></script>
 </body>

@@ -47,6 +47,7 @@ final class AdminApi
             $resource === 'products' && $method === 'GET' && ! $id => $this->listProducts(),
             $resource === 'products' && $method === 'POST' && ! $id => $this->createProduct(),
             $resource === 'products' && $method === 'PUT' && $id => $this->updateProduct((int) $id),
+            $resource === 'products' && $id && $sub === 'recovery-code' && $method === 'POST' => $this->regenerateRecoveryCode((int) $id),
             $resource === 'products' && $method === 'DELETE' && $id => $this->deleteProduct((int) $id),
             $resource === 'licenses' && $method === 'GET' && ! $id => $this->listLicenses(),
             $resource === 'licenses' && $method === 'POST' && ! $id => $this->createLicense(),
@@ -174,6 +175,14 @@ final class AdminApi
              FROM products p ORDER BY p.name'
         )->fetchAll();
 
+        // Recovery codes are stored hashed — never ship them back out.
+        // The SPA only needs to know one exists.
+        foreach ($rows as &$row) {
+            $row['has_recovery_code'] = ! empty($row['recovery_code_hash']) || ! empty($row['recovery_code']);
+            unset($row['recovery_code'], $row['recovery_code_hash'], $row['recovery_digest']);
+        }
+        unset($row);
+
         $this->json(['data' => $rows]);
     }
 
@@ -191,17 +200,20 @@ final class AdminApi
         }
 
         $apiKey = bin2hex(random_bytes(10)); // 20-char key, same style as Botble's
+        $recoveryCode = Database::generateRecoveryCode();
         $this->db->prepare(
-            'INSERT INTO products (product_id, name, api_key, latest_version, recovery_code) VALUES (?, ?, ?, ?, ?)'
+            'INSERT INTO products (product_id, name, api_key, latest_version, recovery_code_hash, recovery_digest) VALUES (?, ?, ?, ?, ?, ?)'
         )->execute([
             $productId,
             $name,
             $apiKey,
             trim((string) ($b['latest_version'] ?? '1.0.0')),
-            Database::generateRecoveryCode(),
+            Database::recoveryCodeHash($recoveryCode),
+            Database::recoveryDigestFor($recoveryCode, $apiKey),
         ]);
 
-        $this->json(['data' => ['id' => $this->db->lastInsertId(), 'api_key' => $apiKey]], 201);
+        // The raw code is returned exactly once — store only its hashes.
+        $this->json(['data' => ['id' => $this->db->lastInsertId(), 'api_key' => $apiKey, 'recovery_code' => $recoveryCode]], 201);
     }
 
     private function productIdTaken(string $productId, int $exceptId = 0): bool
@@ -263,6 +275,21 @@ final class AdminApi
             ]);
         }
 
+        // Rotating the api_key kills the old recovery digest (it's HMAC'd
+        // with the key) — mint a fresh code keyed to the new secret and
+        // hand it back once. Same contract as the regenerate endpoint.
+        $recoveryCode = null;
+        if ($apiKey !== null) {
+            $recoveryCode = Database::generateRecoveryCode();
+            $this->db->prepare(
+                'UPDATE products SET recovery_code_hash = ?, recovery_digest = ?, recovery_code = NULL WHERE id = ?'
+            )->execute([
+                Database::recoveryCodeHash($recoveryCode),
+                Database::recoveryDigestFor($recoveryCode, $apiKey),
+                $id,
+            ]);
+        }
+
         Database::log($this->db, 'admin_product_update', null, null, null, 'product #' . $id, true);
 
         // Disabling a product invalidates every license under it — push
@@ -272,7 +299,34 @@ final class AdminApi
             LicensePush::product($this->db, $id, 'product updated');
         }
 
-        $this->json(['ok' => true, 'api_key' => $apiKey]);
+        $this->json(['ok' => true, 'api_key' => $apiKey, 'recovery_code' => $recoveryCode]);
+    }
+
+    /**
+     * POST /admin-api/products/{id}/recovery-code — issue a new offline
+     * override code. The old one dies immediately (digest rotates); the
+     * new code is returned once and stored only as hashes.
+     */
+    private function regenerateRecoveryCode(int $id): void
+    {
+        $stmt = $this->db->prepare('SELECT api_key FROM products WHERE id = ?');
+        $stmt->execute([$id]);
+        $apiKey = (string) ($stmt->fetchColumn() ?: '');
+        if ($apiKey === '') {
+            $this->json(['error' => 'Product not found'], 404);
+        }
+
+        $code = Database::generateRecoveryCode();
+        $this->db->prepare(
+            'UPDATE products SET recovery_code_hash = ?, recovery_digest = ?, recovery_code = NULL WHERE id = ?'
+        )->execute([
+            Database::recoveryCodeHash($code),
+            Database::recoveryDigestFor($code, $apiKey),
+            $id,
+        ]);
+
+        Database::log($this->db, 'admin_recovery_code', null, null, null, 'product #' . $id, true);
+        $this->json(['ok' => true, 'recovery_code' => $code]);
     }
 
     private function deleteProduct(int $id): void

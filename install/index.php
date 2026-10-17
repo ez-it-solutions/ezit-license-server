@@ -70,11 +70,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ! $alreadyInstalled) {
 
         // Seed the Botble CMS product so existing sites work unchanged
         $productApiKey = bin2hex(random_bytes(10));
+        $recoveryCode = Database::generateRecoveryCode();
         $pdo->prepare(
-            'INSERT INTO products (product_id, name, api_key, latest_version, recovery_code) VALUES (?, ?, ?, ?, ?)'
-        )->execute(['5F061D22', 'Botble CMS', $productApiKey, '1.25.1', Database::generateRecoveryCode()]);
+            'INSERT INTO products (product_id, name, api_key, latest_version, recovery_code_hash, recovery_digest) VALUES (?, ?, ?, ?, ?, ?)'
+        )->execute([
+            '5F061D22', 'Botble CMS', $productApiKey, '1.25.1',
+            Database::recoveryCodeHash($recoveryCode),
+            Database::recoveryDigestFor($recoveryCode, $productApiKey),
+        ]);
 
-        $done = ['api_key' => $productApiKey, 'product_id' => '5F061D22', 'app_url' => $appUrl];
+        $done = ['api_key' => $productApiKey, 'product_id' => '5F061D22', 'app_url' => $appUrl, 'recovery_code' => $recoveryCode];
     } catch (Throwable $e) {
         $error = $e->getMessage();
     }
@@ -127,6 +132,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ! $alreadyInstalled) {
         <div class="success">
             License codes you issue in the dashboard activate sites for product
             <code><?= $done['product_id'] ?></code>
+        </div>
+        <div class="success">
+            <b>Recovery code — save this now, it's shown only here:</b>
+            <code><?= htmlspecialchars($done['recovery_code']) ?></code>
+            It arms a site's emergency gate override while this server is offline.
+            Only its hash is stored — regenerate later from Products → Recovery.
         </div>
     <?php elseif ($alreadyInstalled): ?>
         <h1>Already installed</h1>

@@ -25,8 +25,9 @@ only `platform/core/core.json` is repointed.
 7. Delete or password-protect `/install` after setup.
 
 **Upgrading an existing install:** upload the files — the schema auto-migrates
-(`products.recovery_code` is added and backfilled on the next request). Each
-product's recovery code then appears in **Products → Recovery code**.
+(`products.recovery_code_hash`/`recovery_digest` added; any legacy plaintext
+code is folded into hashes and cleared). Codes are shown **once** at
+generation — use **Products → Recovery** to mint and view a fresh one.
 
 ## Architecture
 
@@ -96,14 +97,16 @@ DB is down you toggle the flag by hand: `touch data/.maintenance` on,
 
 ## Recovery codes (offline site override)
 
-Each product gets a generated `recovery_code` visible in **Products →
-Recovery code**. Sites never store the code — they store/derive
-`recovery_digest = HMAC-SHA256("recovery|" + code, api_key)`, delivered inside
-the signed cert payload and every `verify_license` response.
+Each product gets a `XXXX-XXXX-XXXX-XXXX` recovery code, **shown once** at
+creation or regeneration (**Products → Recovery**) — the server stores only
+its sha256 hash plus `recovery_digest = HMAC-SHA256("recovery|" +
+UPPERCASE(trim(code)), api_key)`, which it ships inside the signed cert
+payload and every `verify_license` response.
 
 Ez IT Core uses it to arm a time-limited emergency gate override (force
 open/closed) **entirely offline** — the whole point is it still works while
-this server is down. Rotating a product's `api_key` rotates the digest.
+this server is down. Rotating a product's `api_key` rotates the digest (a
+new code is minted and shown once).
 
 ## Activation rules
 
@@ -120,8 +123,9 @@ this server is down. Rotating a product's `api_key` rotates the digest.
   admin login 8/10 min → HTTP 429) keyed on `REMOTE_ADDR`, never client headers.
 - `license-push` carries **no verdict** — a forged push can trigger at most a
   re-verify, never disable a site. Full threat model: `docs/LICENSE-SERVER.md` §1a.
-- **Recovery codes never leave this box** — sites hold only the HMAC digest, so
-  a dumped site DB can't yield a code that arms overrides elsewhere.
+- **Recovery codes never leave this box** — sites hold only the HMAC digest,
+  and even *this* server's DB stores only `sha256` + digest, so a dump of
+either side can't yield a working code.
 - Maintenance mode is **not** a denial path: sites distinguish it from
   `status:false` verdicts, so flipping it can't accidentally gate anyone.
 

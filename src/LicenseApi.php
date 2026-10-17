@@ -28,7 +28,7 @@ final class LicenseApi
         // Planned outage: answer instantly so client sites fail fast
         // (no 20s timeouts) and can mark the server "maintenance".
         if ($this->maintenanceMode()) {
-            header('Retry-After: 300');
+            header('Retry-After: ' . $this->maintenanceRetryAfter());
             $this->json([
                 'status' => false,
                 'status_code' => 'SERVER_UNAVAILABLE',
@@ -218,28 +218,30 @@ final class LicenseApi
 
         $payload = $this->parseLicenseFile($product, (string) ($body['license_file'] ?? ''));
 
+        $digest = $this->recoveryDigest($product); // ships on EVERY response, success or denial
+
         if ($payload === null || ($payload['product_id'] ?? '') !== $product['product_id']) {
             $this->log('verify', null, false, 'invalid certificate', $domain);
-            $this->json(['status' => false, 'message' => 'Invalid license certificate.'], 200);
+            $this->json(['status' => false, 'recovery_digest' => $digest, 'message' => 'Invalid license certificate.'], 200);
         }
 
         $license = $this->findLicense($product['id'], $payload['license_code']);
 
         if (! $license) {
             $this->log('verify', null, false, 'license deleted', $domain);
-            $this->json(['status' => false, 'message' => 'License not found.'], 200);
+            $this->json(['status' => false, 'recovery_digest' => $digest, 'message' => 'License not found.'], 200);
         }
 
         $reason = $this->assertUsable($license);
         if ($reason !== null) {
             $this->log('verify', $license['id'], false, $reason['msg'], $domain);
-            $this->json(['status' => false, 'status_code' => $reason['code'], 'message' => $reason['msg']], 200);
+            $this->json(['status' => false, 'status_code' => $reason['code'], 'recovery_digest' => $digest, 'message' => $reason['msg']], 200);
         }
 
         $activation = $this->findActivation($license['id'], $domain);
         if (! $activation || ($payload['domain'] ?? '') !== $domain) {
             $this->log('verify', $license['id'], false, 'domain not activated: ' . $domain, $domain);
-            $this->json(['status' => false, 'status_code' => 'DOMAIN_NOT_ACTIVATED', 'message' => 'License is not activated for this domain.'], 200);
+            $this->json(['status' => false, 'status_code' => 'DOMAIN_NOT_ACTIVATED', 'recovery_digest' => $digest, 'message' => 'License is not activated for this domain.'], 200);
         }
 
         if (($activation['status'] ?? 'enabled') !== 'enabled') {
@@ -247,6 +249,7 @@ final class LicenseApi
             $this->json([
                 'status' => false,
                 'status_code' => 'ACTIVATION_DISABLED',
+                'recovery_digest' => $digest,
                 'message' => 'This activation has been disabled. Contact Ez IT Solutions.',
             ], 200);
         }
@@ -262,7 +265,7 @@ final class LicenseApi
             'licensed_to' => $license['client_name'],
             'activated_at' => $activation['activated_at'],
             'expires_at' => $license['expires_at'],
-            'recovery_digest' => $this->recoveryDigest($product),
+            'recovery_digest' => $digest,
             'config_version' => $this->configVersion(),
         ]);
     }
@@ -584,9 +587,25 @@ final class LicenseApi
      */
     private function recoveryDigest(array $product): ?string
     {
+        // Stored digest (hashed-storage model) wins; fall back to the
+        // legacy plaintext column for rows that haven't migrated yet.
+        $digest = (string) ($product['recovery_digest'] ?? '');
+        if ($digest !== '') {
+            return $digest;
+        }
         $code = (string) ($product['recovery_code'] ?? '');
 
-        return $code === '' ? null : hash_hmac('sha256', 'recovery|' . $code, $product['api_key']);
+        return $code === '' ? null : Database::recoveryDigestFor($code, $product['api_key']);
+    }
+
+    /**
+     * Seconds until expected restoration — plain integer for the
+     * Retry-After header. Clients clamp to 5 min – 1 h on their side;
+     * we just floor it at 30 s so a config typo can't spam-request.
+     */
+    private function maintenanceRetryAfter(): int
+    {
+        return max(30, (int) ($this->config['maintenance_retry_after'] ?? 300));
     }
 
     /**

@@ -198,7 +198,7 @@ pre .k{color:#8fa386}pre .s{color:#a8d47a}pre .n{color:#e0b56a}pre .c{color:#5f7
   <div class="chips">
     <span class="chip"><b>9</b> site endpoints</span>
     <span class="chip"><b>1</b> push channel</span>
-    <span class="chip"><b>14</b> admin routes</span>
+    <span class="chip"><b>15</b> admin routes</span>
     <span class="chip">HMAC-signed certs &amp; tokens</span>
     <span class="chip">503 maintenance + Retry-After</span>
     <span class="chip">Per-IP throttles</span>
@@ -269,7 +269,7 @@ pre .k{color:#8fa386}pre .s{color:#a8d47a}pre .n{color:#e0b56a}pre .c{color:#5f7
         <tr><td class="mono secret">license_code</td><td>license holder (inside the cert)</td><td>Activate/deactivate that license, access_login, Mode-B revoke.</td></tr>
         <tr><td class="mono secret">license_file (cert)</td><td>site only</td><td>Echo-verified each call; HMAC <code>sha256(secret|api_key)</code> — can't be edited or moved between products/domains.</td></tr>
         <tr><td class="mono secret">admin session + CSRF</td><td>admin SPA only</td><td>Full dashboard: suspend licenses, disable products/activations.</td></tr>
-        <tr><td class="mono secret">recovery_code</td><td>license server dashboard only</td><td>Arms a site's emergency gate override <b>offline</b> — the site only ever stores <code>recovery_digest = HMAC-SHA256("recovery|"+code, api_key)</code>, so the raw code can't leak from a site DB.</td></tr>
+        <tr><td class="mono secret">recovery_code</td><td>license server dashboard only — shown once, stored as sha256 + HMAC digest</td><td>Arms a site's emergency gate override <b>offline</b> — the site only ever stores <code>recovery_digest = HMAC-SHA256("recovery|"+UPPERCASE(trim(code)), api_key)</code>, so the raw code can't leak from a site DB.</td></tr>
       </tbody>
     </table>
   </div>
@@ -423,7 +423,7 @@ const ENDPOINTS=[
  params:[['enabled','bool','PUT only']],
  ok:{ok:true,maintenance:true},codes:['HTTP 401','HTTP 419'],admin:true},
 {group:'Admin API (session + CSRF)',id:'admin-mutations',m:'CRUD',path:'/admin-api/{products|licenses|activations|config}',
- desc:'CRUD for products (key regen), licenses, activations (enable/disable/revoke), gate users, config publish+history. Every mutation that changes license state queues a license-push fan-out.',
+ desc:'CRUD for products (key regen — which also mints a fresh recovery code), licenses, activations (enable/disable/revoke), gate users, config publish+history. POST /admin-api/products/{id}/recovery-code rotates the offline override code (returned once). Every mutation that changes license state queues a license-push fan-out.',
  params:[],ok:{ok:true},codes:['HTTP 401','HTTP 419'],admin:true},
 ];
 

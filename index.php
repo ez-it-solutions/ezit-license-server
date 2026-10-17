@@ -49,7 +49,7 @@ if (! $installed || str_starts_with($uri, '/install')) {
 if (str_starts_with($uri, '/api/')
     && $installed
     && (is_file(__DIR__ . '/data/.maintenance') || ! empty($config['maintenance']))) {
-    header('Retry-After: 300');
+    header('Retry-After: ' . max(30, (int) ($config['maintenance_retry_after'] ?? 300)));
     header('Content-Type: application/json');
     http_response_code(503);
     echo json_encode([

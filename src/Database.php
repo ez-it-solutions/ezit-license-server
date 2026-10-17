@@ -80,7 +80,9 @@ CREATE TABLE IF NOT EXISTS products (
     api_key        VARCHAR(64) NOT NULL UNIQUE,   -- sent by client as LB-API-KEY header
     latest_version VARCHAR(32) NOT NULL DEFAULT '1.0.0',
     status         VARCHAR(16) NOT NULL DEFAULT 'enabled', -- enabled|disabled — disabled rejects ALL API calls
-    recovery_code  VARCHAR(40) DEFAULT NULL,    -- offline override code; digest ships inside signed certs
+    recovery_code_hash   VARCHAR(64) DEFAULT NULL,   -- sha256 of normalized code; raw code is shown once, never stored
+    recovery_digest      VARCHAR(64) DEFAULT NULL,   -- HMAC-SHA256('recovery|'.code, api_key) — ships in certs/verify
+    recovery_code        VARCHAR(40) DEFAULT NULL,   -- legacy plaintext column, cleared after migration
     created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -184,11 +186,41 @@ SQL);
         } catch (PDOException) {
             // column already exists
         }
-        // Backfill any product that predates the column.
-        $missing = $pdo->query('SELECT id FROM products WHERE recovery_code IS NULL OR recovery_code = \'\'')->fetchAll(PDO::FETCH_COLUMN);
-        $upd = $pdo->prepare('UPDATE products SET recovery_code = ? WHERE id = ?');
-        foreach ($missing as $pid) {
-            $upd->execute([self::generateRecoveryCode(), $pid]);
+
+        // products.recovery_code_hash + recovery_digest — the raw code is
+        // shown once at generation, then stored only as hashes.
+        try {
+            $pdo->exec('ALTER TABLE products ADD COLUMN recovery_code_hash VARCHAR(64) DEFAULT NULL');
+        } catch (PDOException) {
+            // column already exists
+        }
+        try {
+            $pdo->exec('ALTER TABLE products ADD COLUMN recovery_digest VARCHAR(64) DEFAULT NULL');
+        } catch (PDOException) {
+            // column already exists
+        }
+        // Fold legacy plaintext codes into hashed storage, then blank the
+        // plaintext column — a DB dump must not yield working codes.
+        $legacy = $pdo->query(
+            "SELECT id, api_key, recovery_code FROM products
+             WHERE recovery_code IS NOT NULL AND recovery_code != ''"
+        )->fetchAll();
+        $upd = $pdo->prepare(
+            'UPDATE products SET recovery_code_hash = ?, recovery_digest = ?, recovery_code = NULL WHERE id = ?'
+        );
+        foreach ($legacy as $row) {
+            $upd->execute([
+                self::recoveryCodeHash($row['recovery_code']),
+                self::recoveryDigestFor($row['recovery_code'], $row['api_key']),
+                $row['id'],
+            ]);
+        }
+        // Any product still lacking a code gets one (hash-only — shown nowhere).
+        $missing = $pdo->query('SELECT id, api_key FROM products WHERE recovery_code_hash IS NULL OR recovery_code_hash = \'\'')->fetchAll();
+        $upd2 = $pdo->prepare('UPDATE products SET recovery_code_hash = ?, recovery_digest = ? WHERE id = ?');
+        foreach ($missing as $row) {
+            $code = self::generateRecoveryCode();
+            $upd2->execute([self::recoveryCodeHash($code), self::recoveryDigestFor($code, $row['api_key']), $row['id']]);
         }
 
         // Seed the bootstrap config (v1) so /api/get_config always has a
@@ -228,6 +260,31 @@ SQL);
         }
 
         return $code;
+    }
+
+    /** Client-side normalization: uppercase + trim before hashing. */
+    public static function normalizeRecoveryCode(string $code): string
+    {
+        return strtoupper(trim($code));
+    }
+
+    /**
+     * At-rest hash of the normalized code — lets the server recognize a
+     * code without ever storing it in plaintext. Unsalted sha256 is fine:
+     * codes carry ~80 bits of entropy, nothing to brute-force.
+     */
+    public static function recoveryCodeHash(string $code): string
+    {
+        return hash('sha256', self::normalizeRecoveryCode($code));
+    }
+
+    /**
+     * The digest shipped to sites (cert payload + verify responses):
+     *   recovery_digest = HMAC-SHA256('recovery|' . UPPERCASE(trim(code)), api_key)
+     */
+    public static function recoveryDigestFor(string $code, string $apiKey): string
+    {
+        return hash_hmac('sha256', 'recovery|' . self::normalizeRecoveryCode($code), $apiKey);
     }
 
     public static function normalizeDomain(string $url): string

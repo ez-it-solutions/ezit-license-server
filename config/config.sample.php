@@ -41,6 +41,10 @@ return [
     // → Server Config → Maintenance mode toggles that file).
     // 'maintenance' => true,
 
+    // Seconds advertised in Retry-After while maintenance is on — plain
+    // integer; clients clamp to 5 min – 1 h on their side (floor: 30 s here).
+    // 'maintenance_retry_after' => 300,
+
     // Session cookie name
     'session_name' => 'ezitls',
 

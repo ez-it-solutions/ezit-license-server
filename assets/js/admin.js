@@ -375,6 +375,32 @@
         }
     });
 
+    // Recovery codes are stored hashed — the only time a code is ever
+    // visible is inside this modal, straight from the create/regenerate
+    // response. Closing it means it's gone.
+    function showRecoveryCode(code, extraNote) {
+        $('#code-value').value = code;
+        $('#code-note').textContent = (extraNote ? extraNote + ' ' : '') +
+            'Shown once — the server stores only its hash. Save it somewhere safe; it arms a site\'s emergency gate override while this server is offline.';
+        $('#code-modal').classList.remove('hidden');
+    }
+    $('#code-copy').addEventListener('click', async () => {
+        await navigator.clipboard.writeText($('#code-value').value);
+        $('#code-copy').textContent = 'Copied ✓';
+        setTimeout(() => $('#code-copy').textContent = 'Copy', 1500);
+    });
+
+    window.EZL.regenRecovery = async (id) => {
+        const p = products.find((x) => x.id === id);
+        if (!p) return;
+        if (!await askConfirm(`Mint a new recovery code for "${p.name}"? The old code stops working immediately (its digest rotates) — save the new one when it appears.`, 'Regenerate')) return;
+        try {
+            const r = await api('products/' + id + '/recovery-code', { method: 'POST' });
+            showRecoveryCode(r.recovery_code);
+        } catch (e) { toast('Failed: ' + e.message); return; }
+        loadProducts();
+    };
+
     window.EZL.deleteProduct = async (id) => {
         if (!await askConfirm('Delete this product and ALL its licenses?', 'Delete')) return;
         try {
@@ -470,12 +496,13 @@
                 <td>${esc(p.name)}</td>
                 <td class="mono">${esc(p.product_id)}</td>
                 <td class="mono">${esc(p.api_key)}</td>
-                <td class="mono" title="Offline emergency-override code — enter it on a site's License Gate settings to force the gate open/closed while this server is unreachable">${esc(p.recovery_code || '—')}</td>
+                <td class="mono" title="Offline emergency-override code — shown once when generated/regenerated; stored hashed on the server">${p.has_recovery_code ? '••••••••' : '—'}</td>
                 <td>${esc(p.latest_version)}</td>
                 <td>${badge(p.status || 'enabled')}</td>
                 <td>${p.license_count}</td>
                 <td><div class="row-actions">
                     <button class="btn" onclick="EZL.editProduct(${p.id})">Edit</button>
+                    <button class="btn" onclick="EZL.regenRecovery(${p.id})" title="Mint a new emergency-override recovery code">Recovery</button>
                     <button class="btn" onclick="EZL.toggleProduct(${p.id})">${(p.status || 'enabled') === 'enabled' ? 'Disable' : 'Enable'}</button>
                     <button class="btn btn-danger" onclick="EZL.deleteProduct(${p.id})">Delete</button>
                 </div></td></tr>`).join('')
@@ -554,8 +581,10 @@
                 r = await api('products', { method: 'POST', body });
             }
             const newKey = r.api_key || (r.data && r.data.api_key);
+            const newCode = r.recovery_code || (r.data && r.data.recovery_code);
             $('#product-modal').classList.add('hidden');
             toast(editingProduct ? 'Product updated' + (newKey ? ' — new key: ' + newKey : '') : 'Product created — copy its API key into core.json');
+            if (newCode) showRecoveryCode(newCode, newKey ? 'The API key rotated — the old recovery code is dead too.' : null);
             loadProducts();
         } catch (e2) {
             err.textContent = e2.message;
