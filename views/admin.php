@@ -52,15 +52,26 @@
             <a data-nav="account" class="nav-link"><span class="nav-ico">◐</span> Account</a>
         </nav>
         <div class="sidebar-foot">
-            <div id="admin-name" class="admin-name"></div>
-            <div class="sidebar-btns">
-                <button id="theme-toggle" class="btn btn-ghost btn-sm">◐ Light mode</button>
-                <button id="logout-btn" class="btn btn-ghost btn-sm">Sign out</button>
+            <div class="avatar" id="foot-avatar"></div>
+            <div class="sidebar-user">
+                <b id="foot-name"></b>
+                <span id="foot-email"></span>
             </div>
         </div>
+        <div class="sidebar-cred">Ez IT License Manager · © 2026</div>
     </aside>
 
     <main class="main">
+        <header class="topbar">
+            <h2 class="topbar-title" id="topbar-title">Dashboard</h2>
+            <div class="top-actions">
+                <button id="theme-toggle" class="top-icon" type="button" title="Toggle theme" aria-label="Toggle theme"></button>
+                <button id="logout-btn" class="top-icon" type="button" title="Sign out" aria-label="Sign out">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </button>
+            </div>
+        </header>
+
         <!-- Dashboard -->
         <section id="view-dashboard" class="view">
             <h1>Dashboard</h1>
@@ -112,7 +123,12 @@
                 <form id="update-form" enctype="multipart/form-data">
                     <label>Product</label><select id="upd-product" required></select>
                     <label>Version</label><input id="upd-version" placeholder="1.2.0" required>
-                    <label>Package (.zip)</label><input id="upd-file" type="file" accept=".zip" required>
+                    <label>Package (.zip)</label>
+                    <div class="file-pick">
+                        <input id="upd-file" type="file" accept=".zip" required>
+                        <span class="btn file-pick-btn">Choose file</span>
+                        <span id="upd-file-name" class="file-pick-name">No file chosen</span>
+                    </div>
                     <label>Summary (optional)</label><input id="upd-summary" placeholder="What's new — one line">
                     <label>Changelog (optional)</label><textarea id="upd-changelog" rows="3" spellcheck="false"></textarea>
                     <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="upd-hassql" style="width:auto"> Requires SQL migration (<code>has_sql</code>)</label>

@@ -67,10 +67,14 @@
     }
 
     /* ── theme toggle (dark default; persisted in localStorage) ── */
+    const ICON_SUN = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+    const ICON_MOON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
     const themeBtn = $('#theme-toggle');
     const syncThemeBtn = () => {
+        // Icon shows what you'll switch to — moon in light mode, sun in dark.
         const light = document.documentElement.dataset.theme === 'light';
-        themeBtn.textContent = light ? '● Dark mode' : '◐ Light mode';
+        themeBtn.innerHTML = light ? ICON_MOON : ICON_SUN;
+        themeBtn.title = light ? 'Switch to dark mode' : 'Switch to light mode';
     };
     themeBtn.addEventListener('click', () => {
         const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
@@ -86,7 +90,7 @@
             const s = await api('session');
             if (s.authenticated) {
                 csrf = s.csrf;
-                $('#admin-name').textContent = s.admin.name + ' · ' + s.admin.email;
+                fillAdmin(s.admin);
                 $('#acc-name').value = s.admin.name;
                 showApp();
             } else {
@@ -95,6 +99,13 @@
         } catch {
             showLogin();
         }
+    }
+
+    function fillAdmin(admin) {
+        $('#foot-name').textContent = admin.name;
+        $('#foot-email').textContent = admin.email;
+        $('#foot-avatar').textContent = String(admin.name || '?')
+            .split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
     }
 
     function showLogin() {
@@ -122,7 +133,7 @@
                 body: { email: $('#login-email').value.trim(), password: $('#login-password').value },
             });
             csrf = r.csrf;
-            $('#admin-name').textContent = r.admin.name + ' · ' + r.admin.email;
+            fillAdmin(r.admin);
             $('#acc-name').value = r.admin.name;
             showApp();
         } catch (err) {
@@ -143,6 +154,7 @@
     $$('.nav-link').forEach((a) => a.addEventListener('click', () => navigate(a.dataset.nav)));
 
     const VIEWS = { dashboard: loadDashboard, licenses: loadLicenses, activations: loadActivations, products: loadProducts, updates: loadUpdates, logs: loadLogs, config: loadConfig, account: () => {} };
+    const TITLES = { dashboard: 'Dashboard', licenses: 'Licenses', activations: 'Activations', products: 'Products', updates: 'Update packages', logs: 'Activity log', config: 'Server config', account: 'Account' };
 
     function navigate(view) {
         if (!VIEWS[view]) view = 'dashboard';
@@ -153,6 +165,7 @@
         $$('.nav-link').forEach((a) => a.classList.toggle('active', a.dataset.nav === view));
         $$('.view').forEach((v) => v.classList.add('hidden'));
         $('#view-' + view).classList.remove('hidden');
+        $('#topbar-title').textContent = TITLES[view] || 'Dashboard';
         VIEWS[view]();
     }
     window.addEventListener('popstate', () => navigate(location.pathname.slice(1) || 'dashboard'));
@@ -269,6 +282,10 @@
                 </div></td></tr>`).join('')
             : '<tr><td colspan="7" class="empty">No packages yet — publish your first update</td></tr>';
     }
+
+    $('#upd-file').addEventListener('change', (e) => {
+        $('#upd-file-name').textContent = e.target.files[0]?.name || 'No file chosen';
+    });
 
     $('#update-form').addEventListener('submit', async (e) => {
         e.preventDefault();
