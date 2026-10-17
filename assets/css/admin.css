@@ -163,6 +163,8 @@ h2 { font-size: 1.05rem; font-weight: 600; margin: 1.6rem 0 .7rem; color: var(--
 /* ── File picker ── */
 .file-pick { position: relative; display: flex; align-items: center; gap: .7rem; cursor: pointer; }
 .file-pick input[type="file"] { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+.file-pick input[type="file"]::file-selector-button,
+.file-pick input[type="file"]::-webkit-file-upload-button { cursor: pointer; }
 .file-pick-btn { pointer-events: none; transition: border-color .12s, color .12s; }
 .file-pick:hover .file-pick-btn { border-color: var(--green); color: var(--green); }
 [data-theme="light"] .file-pick:hover .file-pick-btn { border-color: var(--green-dark); color: var(--green-dark); }
