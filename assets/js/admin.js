@@ -136,7 +136,7 @@
         // Legacy #view URLs → clean paths
         if (location.hash.length > 1) {
             const legacy = location.hash.slice(1);
-            history.replaceState({}, '', VIEWS[legacy] ? '/' + legacy : '/');
+            history.replaceState({}, '', ROUTES[legacy] ? '/' + legacy : '/');
         }
         navigate(location.pathname.slice(1) || 'dashboard');
     }
@@ -171,20 +171,56 @@
     /* ── navigation ── */
     $$('.nav-link').forEach((a) => a.addEventListener('click', () => navigate(a.dataset.nav)));
 
-    const VIEWS = { dashboard: loadDashboard, licenses: loadLicenses, activations: loadActivations, products: loadProducts, updates: loadUpdates, logs: loadLogs, config: loadConfig, account: () => {} };
-    const TITLES = { dashboard: 'Dashboard', licenses: 'Licenses', activations: 'Activations', products: 'Products', updates: 'Update packages', logs: 'Activity log', config: 'Server config', account: 'Account' };
+    const VIEWS = { dashboard: loadDashboard, licenses: loadLicenses, products: loadProducts, updates: loadUpdates, logs: loadLogs, config: loadConfig, account: () => {} };
+    const TITLES = { dashboard: 'Dashboard', licenses: 'Licenses', products: 'Products', updates: 'Update packages', logs: 'Activity log', config: 'Server config', account: 'Account' };
 
-    function navigate(view) {
-        if (!VIEWS[view]) view = 'dashboard';
-        const path = view === 'dashboard' ? '/' : '/' + view;
+    // URL slug → {view, tab}. 'config' stays routable for old links but
+    // canonicalizes to 'server-config' — /config collides with the
+    // physical config/ dir, which Apache resolves to a 403 before
+    // index.php ever runs. 'activations' maps to the Licenses tab.
+    const ROUTES = {
+        '':              { view: 'dashboard' },
+        'dashboard':     { view: 'dashboard' },
+        'licenses':      { view: 'licenses' },
+        'activations':   { view: 'licenses', tab: 'activations-list' },
+        'products':      { view: 'products' },
+        'updates':       { view: 'updates' },
+        'logs':          { view: 'logs' },
+        'config':        { view: 'config' },
+        'server-config': { view: 'config' },
+        'account':       { view: 'account' },
+    };
+    // Canonical slug per view — what the address bar normalizes to.
+    const SLUG = { dashboard: '', licenses: 'licenses', products: 'products', updates: 'updates', logs: 'logs', config: 'server-config', account: 'account' };
+
+    function openTab(tabId) {
+        const pane = $('#tab-' + tabId);
+        if (!pane) return;
+        const view = pane.closest('.view');
+        const firstTab = view.querySelector('.tab').dataset.tab;
+        view.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tabId));
+        view.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('hidden', p.id !== 'tab-' + tabId));
+        // Head actions (search / filters / New-license) only make sense
+        // on the primary tab — hide them elsewhere.
+        const head = view.querySelector('.head-actions');
+        if (head) head.classList.toggle('hidden', tabId !== firstTab);
+        if (tabId === 'activations-list') loadActivations();
+    }
+    $$('.tab').forEach((b) => b.addEventListener('click', () => openTab(b.dataset.tab)));
+
+    function navigate(slug) {
+        const r = ROUTES[slug] || ROUTES.dashboard;
+        const canonical = r.tab ? slug : SLUG[r.view]; // tab slugs keep their own URL
+        const path = canonical ? '/' + canonical : '/';
         if (location.pathname !== path) {
             history.pushState({}, '', path);
         }
-        $$('.nav-link').forEach((a) => a.classList.toggle('active', a.dataset.nav === view));
+        $$('.nav-link').forEach((a) => a.classList.toggle('active', a.dataset.nav === r.view));
         $$('.view').forEach((v) => v.classList.add('hidden'));
-        $('#view-' + view).classList.remove('hidden');
-        $('#topbar-title').textContent = TITLES[view] || 'Dashboard';
-        VIEWS[view]();
+        $('#view-' + r.view).classList.remove('hidden');
+        $('#topbar-title').textContent = TITLES[r.view];
+        VIEWS[r.view]();
+        if (r.tab) openTab(r.tab);
     }
     window.addEventListener('popstate', () => navigate(location.pathname.slice(1) || 'dashboard'));
 

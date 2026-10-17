@@ -44,7 +44,6 @@
         <nav>
             <a data-nav="dashboard" class="nav-link active"><span class="nav-ico">◈</span> Dashboard</a>
             <a data-nav="licenses" class="nav-link"><span class="nav-ico">⚿</span> Licenses</a>
-            <a data-nav="activations" class="nav-link"><span class="nav-ico">◉</span> Activations</a>
             <a data-nav="products" class="nav-link"><span class="nav-ico">▣</span> Products</a>
             <a data-nav="updates" class="nav-link"><span class="nav-ico">⇧</span> Updates</a>
             <a data-nav="logs" class="nav-link"><span class="nav-ico">≡</span> Activity Log</a>
@@ -98,28 +97,31 @@
             <div class="panel"><table id="recent-table"><thead><tr><th>Action</th><th>Domain</th><th>Result</th><th>When</th></tr></thead><tbody></tbody></table></div>
         </section>
 
-        <!-- Licenses -->
+        <!-- Licenses (activations live in the second tab) -->
         <section id="view-licenses" class="view hidden">
             <div class="view-head">
                 <h1>Licenses</h1>
-                <div class="head-actions">
+                <div class="head-actions" id="lic-actions">
                     <input id="license-search" class="input-sm" placeholder="Search code / client / email…">
                     <button class="btn btn-primary" id="new-license-btn">+ New license</button>
                 </div>
             </div>
-            <div class="panel"><table id="licenses-table">
-                <thead><tr><th>Code</th><th>Client</th><th>Product</th><th>Status</th><th>Activations</th><th>Expires</th><th></th></tr></thead>
-                <tbody></tbody>
-            </table></div>
-        </section>
-
-        <!-- Activations -->
-        <section id="view-activations" class="view hidden">
-            <h1>Activations</h1>
-            <div class="panel"><table id="activations-table">
-                <thead><tr><th>Domain</th><th>License</th><th>Client</th><th>Product</th><th>IP</th><th>Status</th><th>Activated</th><th>Last check</th><th></th></tr></thead>
-                <tbody></tbody>
-            </table></div>
+            <div class="tabs">
+                <button class="tab active" data-tab="licenses-list" type="button">Licenses</button>
+                <button class="tab" data-tab="activations-list" type="button">Activations</button>
+            </div>
+            <div id="tab-licenses-list" class="tab-pane">
+                <div class="panel"><table id="licenses-table">
+                    <thead><tr><th>Code</th><th>Client</th><th>Product</th><th>Status</th><th>Activations</th><th>Expires</th><th></th></tr></thead>
+                    <tbody></tbody>
+                </table></div>
+            </div>
+            <div id="tab-activations-list" class="tab-pane hidden">
+                <div class="panel"><table id="activations-table">
+                    <thead><tr><th>Domain</th><th>License</th><th>Client</th><th>Product</th><th>IP</th><th>Status</th><th>Activated</th><th>Last check</th><th></th></tr></thead>
+                    <tbody></tbody>
+                </table></div>
+            </div>
         </section>
 
         <!-- Products -->
@@ -163,7 +165,7 @@
         <section id="view-logs" class="view hidden">
             <div class="view-head">
                 <h1>Activity Log</h1>
-                <div class="head-actions">
+                <div class="head-actions" id="log-actions">
                     <input id="logs-q" class="input-sm" placeholder="Search license / domain / IP / detail…">
                     <select id="logs-action" class="input-sm"><option value="">All actions</option></select>
                     <select id="logs-result" class="input-sm">
@@ -178,59 +180,72 @@
                     </select>
                 </div>
             </div>
-            <div class="panel"><table id="logs-table">
-                <thead><tr><th>Time</th><th>Action</th><th>License</th><th>Domain</th><th>IP</th><th>Result</th><th>Detail</th></tr></thead>
-                <tbody></tbody>
-            </table></div>
-            <div class="pager">
-                <span id="logs-info" class="hint"></span>
-                <div class="pager-btns">
-                    <button class="btn btn-ghost btn-sm" id="logs-prev">← Prev</button>
-                    <button class="btn btn-ghost btn-sm" id="logs-next">Next →</button>
-                </div>
+            <div class="tabs">
+                <button class="tab active" data-tab="log-activity" type="button">Activity</button>
+                <button class="tab" data-tab="log-retention" type="button">Retention rules</button>
             </div>
-
-            <h2>Retention rules</h2>
-            <p class="hint">Mail-filter style: each action is governed by its most specific rule — <code>*</code> is the catch-all. <em>Keep for</em> is the max age in days (<b>forever</b> = never purge); <em>Pin last</em> always keeps that many newest rows <b>per site &amp; license</b>, even expired — your last-known record for diagnostics. Runs automatically once a day, or on demand.</p>
-            <div class="panel">
-                <table id="rules-table">
-                    <thead><tr><th>Action</th><th>Keep for</th><th>Pin last</th><th>Enabled</th><th>Log rows</th><th></th></tr></thead>
+            <div id="tab-log-activity" class="tab-pane">
+                <div class="panel"><table id="logs-table">
+                    <thead><tr><th>Time</th><th>Action</th><th>License</th><th>Domain</th><th>IP</th><th>Result</th><th>Detail</th></tr></thead>
                     <tbody></tbody>
-                </table>
-                <div class="rule-add">
-                    <select id="rule-action" title="Which log action this rule governs"></select>
-                    <input id="rule-days" type="number" min="0" value="30" title="Keep for N days">
-                    <label class="rule-check"><input type="checkbox" id="rule-forever"> forever</label>
-                    <input id="rule-keep" type="number" min="0" max="100" value="0" title="Always pin the newest N rows per site">
-                    <button class="btn" id="rule-add" type="button">+ Add rule</button>
-                    <button class="btn btn-primary" id="purge-now" type="button">Run purge now</button>
+                </table></div>
+                <div class="pager">
+                    <span id="logs-info" class="hint"></span>
+                    <div class="pager-btns">
+                        <button class="btn btn-ghost btn-sm" id="logs-prev">← Prev</button>
+                        <button class="btn btn-ghost btn-sm" id="logs-next">Next →</button>
+                    </div>
                 </div>
             </div>
-            <p class="hint" id="rules-note"></p>
+            <div id="tab-log-retention" class="tab-pane hidden">
+                <p class="hint">Mail-filter style: each action is governed by its most specific rule — <code>*</code> is the catch-all. <em>Keep for</em> is the max age in days (<b>forever</b> = never purge); <em>Pin last</em> always keeps that many newest rows <b>per site &amp; license</b>, even expired — your last-known record for diagnostics. Runs automatically once a day, or on demand.</p>
+                <div class="panel">
+                    <table id="rules-table">
+                        <thead><tr><th>Action</th><th>Keep for</th><th>Pin last</th><th>Enabled</th><th>Log rows</th><th></th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                    <div class="rule-add">
+                        <select id="rule-action" title="Which log action this rule governs"></select>
+                        <input id="rule-days" type="number" min="0" value="30" title="Keep for N days">
+                        <label class="rule-check"><input type="checkbox" id="rule-forever"> forever</label>
+                        <input id="rule-keep" type="number" min="0" max="100" value="0" title="Always pin the newest N rows per site">
+                        <button class="btn" id="rule-add" type="button">+ Add rule</button>
+                        <button class="btn btn-primary" id="purge-now" type="button">Run purge now</button>
+                    </div>
+                </div>
+                <p class="hint" id="rules-note"></p>
+            </div>
         </section>
 
         <!-- Server config -->
         <section id="view-config" class="view hidden">
             <h1>Server Config <span id="cfg-version" class="badge badge-ok"></span></h1>
             <p class="hint">Bootstrap document served by <code>/api/get_config</code>. EzIT Core reads this to locate the API, endpoint map, services and notices. Every save publishes a new immutable version — sites detect it via <code>config_version</code>.</p>
-            <div class="panel form-panel" style="margin-bottom:1rem">
-                <label>Maintenance mode</label>
-                <p class="hint" style="margin-top:0">Planned outage: the public API answers every call instantly with <code>503 SERVER_UNAVAILABLE</code> so client sites fail fast instead of timing out. The admin panel stays up. Flag file: <code>data/.maintenance</code>.</p>
-                <p id="maint-state" class="mono" style="margin:.4rem 0">loading…</p>
-                <button class="btn" id="maint-toggle">…</button>
+            <div class="tabs">
+                <button class="tab active" data-tab="cfg-editor" type="button">Configuration</button>
+                <button class="tab" data-tab="cfg-history" type="button">Publish history</button>
             </div>
-            <div class="panel form-panel">
-                <div id="cfg-msg" class="alert hidden"></div>
-                <label>Payload (JSON)</label>
-                <textarea id="cfg-payload" class="mono code-area" rows="16" spellcheck="false"></textarea>
-                <label>Version note (why this change)</label><input id="cfg-note" placeholder="e.g. point api_base at EzOps hostname">
-                <button class="btn btn-primary" id="cfg-publish">Publish new version</button>
+            <div id="tab-cfg-editor" class="tab-pane">
+                <div class="panel form-panel" style="margin-bottom:1rem">
+                    <label>Maintenance mode</label>
+                    <p class="hint" style="margin-top:0">Planned outage: the public API answers every call instantly with <code>503 SERVER_UNAVAILABLE</code> so client sites fail fast instead of timing out. The admin panel stays up. Flag file: <code>data/.maintenance</code>.</p>
+                    <p id="maint-state" class="mono" style="margin:.4rem 0">loading…</p>
+                    <button class="btn" id="maint-toggle">…</button>
+                </div>
+                <div class="panel form-panel">
+                    <div id="cfg-msg" class="alert hidden"></div>
+                    <label>Payload (JSON)</label>
+                    <textarea id="cfg-payload" class="mono code-area" rows="16" spellcheck="false"></textarea>
+                    <label>Version note (why this change)</label><input id="cfg-note" placeholder="e.g. point api_base at EzOps hostname">
+                    <button class="btn btn-primary" id="cfg-publish">Publish new version</button>
+                </div>
             </div>
-            <h2>Publish history</h2>
-            <div class="panel"><table id="cfg-history-table">
-                <thead><tr><th>Version</th><th>Note</th><th>Published</th><th></th></tr></thead>
-                <tbody></tbody>
-            </table></div>
+            <div id="tab-cfg-history" class="tab-pane hidden">
+                <div class="panel"><table id="cfg-history-table">
+                    <thead><tr><th>Version</th><th>Note</th><th>Published</th><th></th></tr></thead>
+                    <tbody></tbody>
+                </table></div>
+            </div>
         </section>
 
         <!-- Account -->
