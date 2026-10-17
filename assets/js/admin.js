@@ -756,10 +756,9 @@
                 || '<tr><td colspan="7" class="empty">No activity matches these filters.</td></tr>';
 
             $('#logs-info').textContent = r.total
-                ? `${r.total.toLocaleString()} entr${r.total === 1 ? 'y' : 'ies'} — page ${r.page} of ${r.pages}`
+                ? `${r.total.toLocaleString()} entr${r.total === 1 ? 'y' : 'ies'}`
                 : 'No entries';
-            $('#logs-prev').disabled = r.page <= 1;
-            $('#logs-next').disabled = r.page >= r.pages;
+            renderLogPager(r.page, r.pages);
 
             if (!logActionsLoaded && r.actions.length) {
                 logActionsLoaded = true;
@@ -780,6 +779,38 @@
             $('#logs-info').textContent = 'Load failed: ' + e.message;
         }
         loadLogRules();
+    }
+
+    // Windowed page list, Google-style: 1 … p-2 p-1 [p] p+1 p+2 … N
+    function pagerItems(page, pages) {
+        if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+        const lo = Math.max(2, page - 2), hi = Math.min(pages - 1, page + 2);
+        const items = [1];
+        if (lo > 2) items.push('…');
+        for (let i = lo; i <= hi; i++) items.push(i);
+        if (hi < pages - 1) items.push('…');
+        items.push(pages);
+        return items;
+    }
+
+    function renderLogPager(page, pages) {
+        pages = Math.max(1, pages);
+        // Left: jump-select "Page [n] of N"
+        $('#logs-page-sel').innerHTML = Array.from({ length: pages }, (_, i) =>
+            `<option value="${i + 1}"${i + 1 === page ? ' selected' : ''}>${i + 1}</option>`).join('');
+        $('#logs-pages-n').textContent = pages;
+        // Right: ‹ 1 … numbers … N ›
+        $('#logs-pager').innerHTML =
+            `<button class="pg" data-pg="${page - 1}"${page <= 1 ? ' disabled' : ''} aria-label="Previous page">‹</button>` +
+            pagerItems(page, pages).map((it) => it === '…'
+                ? '<span class="pg-ell">…</span>'
+                : `<button class="pg${it === page ? ' active' : ''}" data-pg="${it}">${it}</button>`).join('') +
+            `<button class="pg" data-pg="${page + 1}"${page >= pages ? ' disabled' : ''} aria-label="Next page">›</button>`;
+    }
+
+    function goLogPage(p) {
+        logPage = p;
+        loadLogs(true);
     }
 
     /* ── log retention rules ── */
@@ -855,8 +886,12 @@
     });
 
     const resetLogs = () => { logPage = 1; loadLogs(); };
-    $('#logs-prev').addEventListener('click', () => { logPage--; loadLogs(true); });
-    $('#logs-next').addEventListener('click', () => { logPage++; loadLogs(true); });
+    $('#logs-pager').addEventListener('click', (e) => {
+        const b = e.target.closest('.pg');
+        if (!b || b.disabled) return;
+        goLogPage(+b.dataset.pg);
+    });
+    $('#logs-page-sel').addEventListener('change', (e) => goLogPage(+e.target.value));
     $('#logs-action').addEventListener('change', resetLogs);
     $('#logs-result').addEventListener('change', resetLogs);
     $('#logs-per').addEventListener('change', resetLogs);

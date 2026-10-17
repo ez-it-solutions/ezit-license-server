@@ -218,8 +218,23 @@ input[readonly] { background: var(--panel2); color: var(--muted); cursor: defaul
 .view-head h1 { margin: 0; }
 .head-actions { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
 select.input-sm { width: auto; }
-.pager { display: flex; justify-content: space-between; align-items: center; margin-top: .9rem; }
-.pager-btns { display: flex; gap: .5rem; }
+.pager { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: .9rem; flex-wrap: wrap; }
+.pager .hint { margin-top: 0; }
+.pager-left { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
+.pager-jump { display: inline-flex; align-items: center; gap: .45rem; font-size: .82rem; color: var(--muted); }
+.pager-jump .input-sm { width: auto; min-width: 66px; padding: .32rem .5rem; }
+.pager-btns { display: flex; gap: .3rem; align-items: center; }
+.pg {
+    min-width: 30px; height: 30px; padding: 0 .45rem; border: 1px solid var(--border);
+    border-radius: 7px; background: transparent; color: var(--muted);
+    font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer;
+    transition: background .12s, color .12s, border-color .12s;
+}
+.pg:hover:not(:disabled):not(.active) { color: var(--text); background: var(--row-hover); }
+.pg.active { background: var(--row-active); color: var(--green); border-color: var(--green); }
+[data-theme="light"] .pg.active { color: var(--green-dark); border-color: var(--green-dark); }
+.pg:disabled { opacity: .35; cursor: default; }
+.pg-ell { align-self: center; padding: 0 .1rem; color: var(--muted); }
 .pager .btn:disabled { opacity: .4; cursor: default; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 .9rem; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 .9rem; }

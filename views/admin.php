@@ -190,11 +190,11 @@
                     <tbody></tbody>
                 </table></div>
                 <div class="pager">
-                    <span id="logs-info" class="hint"></span>
-                    <div class="pager-btns">
-                        <button class="btn btn-ghost btn-sm" id="logs-prev">← Prev</button>
-                        <button class="btn btn-ghost btn-sm" id="logs-next">Next →</button>
+                    <div class="pager-left">
+                        <span id="logs-info" class="hint"></span>
+                        <span class="pager-jump">Page <select id="logs-page-sel" class="input-sm"></select> of <span id="logs-pages-n">1</span></span>
                     </div>
+                    <div class="pager-btns" id="logs-pager"></div>
                 </div>
             </div>
             <div id="tab-log-retention" class="tab-pane hidden">
