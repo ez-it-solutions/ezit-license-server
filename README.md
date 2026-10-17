@@ -108,6 +108,16 @@ open/closed) **entirely offline** — the whole point is it still works while
 this server is down. Rotating a product's `api_key` rotates the digest (a
 new code is minted and shown once).
 
+## Update packages
+
+Dashboard → **Updates** publishes a versioned `.zip` per product (plus
+summary/changelog/`has_sql`). Packages land in `data/updates/` and feed
+`check_update` (announced only when `version > current_version`),
+`get_update_size`, and `download_update` — downloads require an active
+license on the calling domain. Publishing bumps `products.latest_version`
+so `get_config` reports the newest release. PHP's `upload_max_filesize`
+/`post_max_size` must exceed your zip size (hard cap 250 MB).
+
 ## Activation rules
 
 - Same domain re-activating → idempotent refresh (safe to re-run).

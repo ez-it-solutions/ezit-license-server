@@ -142,7 +142,7 @@
     /* ── navigation ── */
     $$('.nav-link').forEach((a) => a.addEventListener('click', () => navigate(a.dataset.nav)));
 
-    const VIEWS = { dashboard: loadDashboard, licenses: loadLicenses, activations: loadActivations, products: loadProducts, logs: loadLogs, config: loadConfig, account: () => {} };
+    const VIEWS = { dashboard: loadDashboard, licenses: loadLicenses, activations: loadActivations, products: loadProducts, updates: loadUpdates, logs: loadLogs, config: loadConfig, account: () => {} };
 
     function navigate(view) {
         if (!VIEWS[view]) view = 'dashboard';
@@ -198,7 +198,9 @@
     async function loadProductOptions() {
         const r = await api('products');
         products = r.data;
-        $('#lic-product').innerHTML = products.map((p) => `<option value="${p.id}">${esc(p.name)} (${esc(p.product_id)})</option>`).join('');
+        const opts = products.map((p) => `<option value="${p.id}">${esc(p.name)} (${esc(p.product_id)})</option>`).join('');
+        if ($('#lic-product')) $('#lic-product').innerHTML = opts;
+        if ($('#upd-product')) $('#upd-product').innerHTML = opts;
     }
 
     let editingLicense = null;
@@ -246,6 +248,68 @@
         } catch (e) { toast('Revoke failed: ' + e.message); return; }
         loadActivations();
     };
+    /* ── update packages ── */
+    const fmtSize = (b) => (b || 0) >= 1048576
+        ? (b / 1048576).toFixed(1) + ' MB'
+        : Math.max(1, Math.round((b || 0) / 1024)) + ' KB';
+
+    async function loadUpdates() {
+        await loadProductOptions();
+        const r = await api('updates');
+        $('#updates-table tbody').innerHTML = r.data.length
+            ? r.data.map((u) => `<tr>
+                <td>${esc(u.product_name)}<br><small style="color:var(--muted)">${esc(u.product_code)}</small></td>
+                <td class="mono">${esc(u.version)}</td>
+                <td>${esc(String(u.release_date || '').slice(0, 10))}</td>
+                <td>${u.has_file ? fmtSize(u.file_size) : '<span class="badge badge-fail">missing</span>'}</td>
+                <td>${u.has_sql ? '<span class="badge badge-suspended">yes</span>' : '—'}</td>
+                <td>${esc(u.summary || '')}</td>
+                <td><div class="row-actions">
+                    <button class="btn btn-danger" onclick="EZL.deleteUpdate(${u.id})">Delete</button>
+                </div></td></tr>`).join('')
+            : '<tr><td colspan="7" class="empty">No packages yet — publish your first update</td></tr>';
+    }
+
+    $('#update-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = $('#upd-btn');
+        btn.disabled = true;
+        const fd = new FormData();
+        fd.append('product_id', $('#upd-product').value);
+        fd.append('version', $('#upd-version').value.trim());
+        fd.append('summary', $('#upd-summary').value.trim());
+        fd.append('changelog', $('#upd-changelog').value.trim());
+        if ($('#upd-hassql').checked) fd.append('has_sql', '1');
+        fd.append('package', $('#upd-file').files[0]);
+        try {
+            // Multipart — bypass the JSON api() helper but keep the CSRF header.
+            const res = await fetch('/admin-api/updates', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf },
+                body: fd,
+                credentials: 'same-origin',
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+            toast('Update ' + data.data.version + ' published');
+            e.target.reset();
+            loadUpdates();
+        } catch (err) {
+            toast('Publish failed: ' + err.message);
+        } finally {
+            btn.disabled = false;
+        }
+    });
+
+    window.EZL.deleteUpdate = async (id) => {
+        if (!await askConfirm('Delete this update package? Sites on older versions will no longer see it.', 'Delete')) return;
+        try {
+            await api('updates/' + id, { method: 'DELETE' });
+            toast('Update deleted');
+        } catch (e) { toast('Delete failed: ' + e.message); return; }
+        loadUpdates();
+    };
+
     /* ── server config ── */
     async function loadConfig() {
         const msg = $('#cfg-msg');

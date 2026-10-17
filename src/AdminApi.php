@@ -57,6 +57,9 @@ final class AdminApi
             $resource === 'licenses' && $id && $sub === 'users' && $method === 'GET' => $this->licenseUsers((int) $id),
             $resource === 'licenses' && $id && $sub === 'users' && $method === 'POST' => $this->createLicenseUser((int) $id),
             $resource === 'licenses' && $id && $sub === 'users' && $method === 'DELETE' && isset($segments[3]) => $this->deleteLicenseUser((int) $id, (int) $segments[3]),
+            $resource === 'updates' && $method === 'GET' && ! $id => $this->listUpdates(),
+            $resource === 'updates' && $method === 'POST' && ! $id => $this->createUpdate(),
+            $resource === 'updates' && $method === 'DELETE' && $id => $this->deleteUpdate((int) $id),
             $resource === 'activations' && $method === 'GET' && ! $id => $this->listActivations(),
             $resource === 'activations' && $method === 'PUT' && $id => $this->updateActivation((int) $id),
             $resource === 'activations' && $method === 'DELETE' && $id => $this->deleteActivation((int) $id),
@@ -632,6 +635,131 @@ final class AdminApi
             'total'   => $total,
             'actions' => $actions,
         ]);
+    }
+
+    /* ─────────────────────────── update packages ─────────────────────────── */
+
+    private function listUpdates(): void
+    {
+        $rows = $this->db->query(
+            'SELECT u.id, u.update_id, u.version, u.summary, u.changelog,
+                    u.has_sql, u.file_size, u.release_date, u.created_at,
+                    p.name AS product_name, p.product_id AS product_code,
+                    (u.file_path IS NOT NULL AND u.file_path <> \'\') AS has_file
+             FROM updates u JOIN products p ON p.id = u.product_id
+             ORDER BY u.release_date DESC, u.id DESC'
+        )->fetchAll();
+
+        $this->json(['data' => $rows]);
+    }
+
+    /**
+     * Publish an update package — the only write path for updates.*, which
+     * drives check_update / get_update_size / download_update. Multipart
+     * form (not the JSON body): product_id, version, summary?, changelog?,
+     * has_sql?, package (zip file, required).
+     */
+    private function createUpdate(): void
+    {
+        $productId = (int) ($_POST['product_id'] ?? 0);
+        $version   = trim((string) ($_POST['version'] ?? ''));
+        $summary   = trim((string) ($_POST['summary'] ?? '')) ?: null;
+        $changelog = trim((string) ($_POST['changelog'] ?? '')) ?: null;
+        $hasSql    = ! empty($_POST['has_sql']) ? 1 : 0;
+        $file      = $_FILES['package'] ?? null;
+
+        if ($productId <= 0 || $version === '') {
+            $this->json(['error' => 'Product and version are required.'], 422);
+        }
+        if (! preg_match('/^\d+(\.\d+){1,3}([.-][A-Za-z0-9]+)?$/', $version)) {
+            $this->json(['error' => 'Version must look like 1.2.3 (optional pre-release suffix).'], 422);
+        }
+
+        $stmt = $this->db->prepare('SELECT id, name, product_id, latest_version FROM products WHERE id = ?');
+        $stmt->execute([$productId]);
+        $product = $stmt->fetch();
+        if (! $product) {
+            $this->json(['error' => 'Unknown product.'], 404);
+        }
+
+        if (! is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK
+            || ! is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
+            $code = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+            $this->json(['error' => 'A .zip package upload is required.'
+                . (in_array($code, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)
+                    ? ' (file exceeds the server upload limit — raise upload_max_filesize/post_max_size)'
+                    : '')], 422);
+        }
+        if (strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION)) !== 'zip') {
+            $this->json(['error' => 'Package must be a .zip file.'], 422);
+        }
+        $size = (int) filesize((string) $file['tmp_name']);
+        if ($size <= 0) {
+            $this->json(['error' => 'Uploaded package is empty.'], 422);
+        }
+        if ($size > 250 * 1024 * 1024) {
+            $this->json(['error' => 'Package exceeds the 250 MB cap.'], 413);
+        }
+
+        $dir = dirname(__DIR__) . '/data/updates';
+        if (! is_dir($dir) && ! mkdir($dir, 0775, true) && ! is_dir($dir)) {
+            $this->json(['error' => 'Update storage is not writable.'], 500);
+        }
+
+        $updateId = strtoupper(bin2hex(random_bytes(4)));
+        $fname    = preg_replace('/[^A-Za-z0-9._-]/', '_',
+            $product['product_id'] . '-' . $version . '-' . $updateId . '.zip');
+        $dest = $dir . '/' . $fname;
+
+        if (! move_uploaded_file((string) $file['tmp_name'], $dest)) {
+            $this->json(['error' => 'Could not store the uploaded package.'], 500);
+        }
+
+        $this->db->prepare(
+            'INSERT INTO updates (product_id, update_id, version, summary, changelog, has_sql, file_path, file_size, release_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, date(\'now\'))'
+        )->execute([$productId, $updateId, $version, $summary, $changelog, $hasSql, $dest, $size]);
+
+        // get_config serves products.latest_version — keep it honest so the
+        // bootstrap doc and check_update agree on what "newest" means.
+        if (version_compare($version, (string) $product['latest_version'], '>')) {
+            $this->db->prepare('UPDATE products SET latest_version = ? WHERE id = ?')
+                ->execute([$version, $productId]);
+        }
+
+        Database::log($this->db, 'admin_update_publish', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
+            $product['name'] . ' ' . $version, true);
+
+        $this->json(['data' => [
+            'id'        => (int) $this->db->lastInsertId(),
+            'update_id' => $updateId,
+            'version'   => $version,
+        ]], 201);
+    }
+
+    private function deleteUpdate(int $id): void
+    {
+        $stmt = $this->db->prepare(
+            'SELECT u.*, p.name AS product_name FROM updates u
+             JOIN products p ON p.id = u.product_id WHERE u.id = ?'
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (! $row) {
+            $this->json(['error' => 'Update not found.'], 404);
+        }
+
+        $file = (string) ($row['file_path'] ?? '');
+        if ($file !== '' && is_file($file)
+            && str_starts_with(realpath($file) ?: '', realpath(dirname(__DIR__) . '/data') . DIRECTORY_SEPARATOR)) {
+            unlink($file);
+        }
+        $this->db->prepare('DELETE FROM updates WHERE id = ?')->execute([$id]);
+
+        Database::log($this->db, 'admin_update_delete', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
+            $row['product_name'] . ' ' . $row['version'], true);
+
+        $this->json(['ok' => true]);
     }
 
     /* ─────────────────────────── maintenance mode ─────────────────────────── */

@@ -28,7 +28,7 @@ same commit as any API change). Interactive copy with a try-it console:
 | Product validation (dup product_id/api_key) | ✅ live | 422/409 with actionable messages |
 | `get_config` bootstrap doc | ✅ live | Versioned JSON (api_base/endpoints/services/notices) + per-product merge; `config_version` also rides on `check_update`; admin publish + history UI live |
 | `license-push` server → site | ✅ live | `LicensePush` fans out to `activations.site_url` on license update/delete, activation enable/disable/revoke, product update, and Mode-B revoke; logged as `push` |
-| `check_update` | 🔨 partial | Endpoint works, but **no admin UI/API to publish update packages** — `updates.file_path` can never be populated. P0. |
+| `check_update` | ✅ live | Admin → Updates panel publishes zip packages (`/admin-api/updates`, multipart) into `data/updates/`; serves `get_update_size`/`download_update`; bumps `products.latest_version` |
 | Cert payload | ✅ live | Emits base fields + `max_activations`, `used_activations`, `features[]` (from new `licenses.features` JSON column; editable via admin API `features` field — SPA field TODO) |
 | Marketplace catalog | ⬜ not started | No catalog schema, no `/api/catalog*` |
 | Announcements | ⬜ not started | Banners module waits on this feed |
@@ -36,7 +36,7 @@ same commit as any API change). Interactive copy with a try-it console:
 | Payments (Invoice Ninja webhook) | ⬜ not started | billing.ez-it-solutions.com |
 | Rate limiting | ✅ live | Per-IP failure throttles: `activate_license` (10/10min), `access_login` (8/10min), admin `login` (8/10min) — backed by `activity_logs`, 429 over the cap |
 | Maintenance mode | ✅ live | `data/.maintenance` flag (or `'maintenance' => true` in config.php) → every `/api/*` returns 503 `SERVER_UNAVAILABLE` + `Retry-After` instantly; dashboard toggle at Server Config |
-| Offline recovery (recovery codes) | ✅ live | `products.recovery_code`; `recovery_digest` ships inside the signed cert + on `verify_license` — sites validate codes offline (HMAC keyed with `api_key`) to arm the plugin's gate override |
+| Offline recovery (recovery codes) | ✅ live | Hash-only storage (`recovery_code_hash` + `recovery_digest`); raw code shown once at mint/regen; digest ships in the signed cert + every `verify_license` — sites validate codes offline (HMAC keyed with `api_key`) to arm the gate override |
 | Log retention | ⬜ not started | `activity_logs` grows unbounded |
 
 ## Known caveats
@@ -227,10 +227,10 @@ re-points itself on next check.
 
 - ~~[P0] `license-push` caller~~ — done (`src/LicensePush.php`); reuse
   the same fan-out for the Phase 5 payment webhook.
-- **[P0] Update package manager** — dashboard upload (zip + version +
-  changelog + `has_sql`) writing `updates.*`. Unblocks real
-  `check_update` responses and is the foundation for theme/plugin
-  auto-updates.
+- ~~[P0] Update package manager~~ — done: Updates panel uploads
+  zip + version + changelog + `has_sql` → `updates.*` + `data/updates/`;
+  bumps `products.latest_version`. Real `check_update` responses now
+  flow; foundation for theme/plugin auto-updates.
 - ~~[P0] Enrich cert payload~~ — done: `Certificate::issue($extra)`
   merges `max_activations`/`used_activations`/`features[]`.
   Remaining: features field in the licenses SPA form (API already

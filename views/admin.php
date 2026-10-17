@@ -46,6 +46,7 @@
             <a data-nav="licenses" class="nav-link"><span class="nav-ico">⚿</span> Licenses</a>
             <a data-nav="activations" class="nav-link"><span class="nav-ico">◉</span> Activations</a>
             <a data-nav="products" class="nav-link"><span class="nav-ico">▣</span> Products</a>
+            <a data-nav="updates" class="nav-link"><span class="nav-ico">⇧</span> Updates</a>
             <a data-nav="logs" class="nav-link"><span class="nav-ico">≡</span> Activity Log</a>
             <a data-nav="config" class="nav-link"><span class="nav-ico">⚙</span> Server Config</a>
             <a data-nav="account" class="nav-link"><span class="nav-ico">◐</span> Account</a>
@@ -100,6 +101,28 @@
                 <tbody></tbody>
             </table></div>
             <p class="hint">Copy <code>api_key</code> into each site's <code>platform/core/core.json</code> as <code>"apiKey"</code>, and set <code>"apiUrl"</code> to this server's URL.</p>
+        </section>
+
+        <!-- Updates -->
+        <section id="view-updates" class="view hidden">
+            <div class="view-head"><h1>Update packages</h1></div>
+            <p class="hint">Published packages feed <code>check_update</code>, <code>get_update_size</code> and <code>download_update</code>. Sites only download with an active license; publishing bumps the product's <code>latest_version</code> when newer.</p>
+            <div class="panel form-panel" style="margin-bottom:1rem">
+                <div id="upd-msg" class="alert hidden"></div>
+                <form id="update-form" enctype="multipart/form-data">
+                    <label>Product</label><select id="upd-product" required></select>
+                    <label>Version</label><input id="upd-version" placeholder="1.2.0" required>
+                    <label>Package (.zip)</label><input id="upd-file" type="file" accept=".zip" required>
+                    <label>Summary (optional)</label><input id="upd-summary" placeholder="What's new — one line">
+                    <label>Changelog (optional)</label><textarea id="upd-changelog" rows="3" spellcheck="false"></textarea>
+                    <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="upd-hassql" style="width:auto"> Requires SQL migration (<code>has_sql</code>)</label>
+                    <button class="btn btn-primary" type="submit" id="upd-btn">Publish update</button>
+                </form>
+            </div>
+            <div class="panel"><table id="updates-table">
+                <thead><tr><th>Product</th><th>Version</th><th>Released</th><th>Size</th><th>SQL</th><th>Summary</th><th></th></tr></thead>
+                <tbody></tbody>
+            </table></div>
         </section>
 
         <!-- Logs -->

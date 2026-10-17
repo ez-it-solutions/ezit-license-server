@@ -108,6 +108,8 @@ Gate-user login for UC-page forms.
 ### `check_update`
 **In:** `product_id`, `current_version`
 **Out:** `{status, update_id?, version?, release_date?, summary?, changelog?, has_sql?, config_version}`
+Serves the newest published package for the product (admin → Updates
+panel). An update is only announced when `version > current_version`.
 
 ### `get_update_size/{update_id}`
 Headers only — returns `Content-Length` of the package.
@@ -167,6 +169,8 @@ All other calls need `X-CSRF-TOKEN`. Throttled 8 fails/IP/10min.
 | `licenses/{id}/users/{uid}` | DELETE | remove gate user |
 | `activations` | GET | list |
 | `activations/{id}` | PUT/DELETE | enable/disable / revoke |
+| `updates` | GET/POST | list packages / publish — **multipart**, fields `product_id`, `version`, `summary?`, `changelog?`, `has_sql?`, `package` (zip, required, ≤250 MB). Bumps `products.latest_version` when newer |
+| `updates/{id}` | DELETE | remove package + stored zip |
 | `logs` | GET | `?q=&action=&result=&page=&per=` (per 10–200) + distinct `actions` list |
 | `config` | GET/POST | current doc + history / publish new version |
 | `config/{id}` | GET | one historical version |
