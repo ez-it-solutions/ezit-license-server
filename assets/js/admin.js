@@ -481,7 +481,7 @@
             el.title = 'Could not read maintenance/API state';
             return;
         }
-        el.innerHTML = '<span class="status-dot"></span>' + (m.maintenance ? 'Maintenance mode' : 'API online');
+        el.innerHTML = '<span class="status-dot"></span>' + (m.maintenance ? 'Maintenance mode' : 'API Online');
         el.className = 'status-pill ' + (m.maintenance ? 'status-bad' : 'status-ok');
         el.title = m.maintenance
             ? 'All public license calls return 503' + (m.since ? ' — since ' + m.since : '')
