@@ -64,6 +64,11 @@ final class AdminApi
             $resource === 'activations' && $method === 'PUT' && $id => $this->updateActivation((int) $id),
             $resource === 'activations' && $method === 'DELETE' && $id => $this->deleteActivation((int) $id),
             $resource === 'logs' && $method === 'GET' => $this->listLogs(),
+            $path === 'logs/purge' && $method === 'POST' => $this->purgeLogs(),
+            $resource === 'log-rules' && $method === 'GET' => $this->listLogRules(),
+            $resource === 'log-rules' && $method === 'POST' => $this->createLogRule(),
+            $resource === 'log-rules' && $method === 'PUT' && $id => $this->updateLogRule((int) $id),
+            $resource === 'log-rules' && $method === 'DELETE' && $id => $this->deleteLogRule((int) $id),
             $resource === 'config' && $method === 'GET' && $id => $this->getConfigVersion((int) $id),
             $resource === 'config' && $method === 'GET' => $this->getConfig(),
             $resource === 'config' && $method === 'POST' => $this->publishConfig(),
@@ -760,6 +765,111 @@ final class AdminApi
             $row['product_name'] . ' ' . $row['version'], true);
 
         $this->json(['ok' => true]);
+    }
+
+    /* ─────────────────────────── log retention ─────────────────────────── */
+
+    private function listLogRules(): void
+    {
+        $rules = $this->db->query('SELECT * FROM log_rules ORDER BY position, id')->fetchAll();
+        $actions = $this->db->query('SELECT DISTINCT action FROM activity_logs ORDER BY action')
+            ->fetchAll(PDO::FETCH_COLUMN);
+        $counts = $this->db->query('SELECT action, COUNT(*) AS n FROM activity_logs GROUP BY action')
+            ->fetchAll(PDO::FETCH_KEY_PAIR);
+
+        $this->json(['data' => [
+            'rules'   => $rules,
+            'actions' => $actions,
+            'counts'  => $counts,
+            'total'   => array_sum(array_map('intval', $counts ?: [])),
+        ]]);
+    }
+
+    private function createLogRule(): void
+    {
+        $b = $this->body();
+        $action = trim((string) ($b['action'] ?? ''));
+        if (! preg_match('/^[\w*-]{1,64}$/', $action)) {
+            $this->json(['error' => 'Pick an action (or * for a catch-all rule).'], 422);
+        }
+        $stmt = $this->db->prepare('SELECT COUNT(*) FROM log_rules WHERE action = ?');
+        $stmt->execute([$action]);
+        if ((int) $stmt->fetchColumn() > 0) {
+            $this->json(['error' => 'A rule for "' . $action . '" already exists — edit or delete it first.'], 409);
+        }
+
+        $retain = max(0, (int) ($b['retain_days'] ?? 90)); // 0 = forever
+        $keep   = min(100, max(0, (int) ($b['keep_last'] ?? 0)));
+        $pos    = (int) $this->db->query('SELECT COALESCE(MAX(position), -1) FROM log_rules')->fetchColumn() + 1;
+
+        $this->db->prepare(
+            'INSERT INTO log_rules (action, retain_days, keep_last, position, enabled) VALUES (?, ?, ?, ?, ?)'
+        )->execute([$action, $retain, $keep, $pos, ! empty($b['enabled']) ? 1 : 0]);
+
+        Database::log($this->db, 'admin_log_rule', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
+            "rule {$action}: {$retain}d" . ($keep ? " keep-last {$keep}" : ''), true);
+
+        $this->json(['data' => ['id' => (int) $this->db->lastInsertId()]], 201);
+    }
+
+    private function updateLogRule(int $id): void
+    {
+        $stmt = $this->db->prepare('SELECT * FROM log_rules WHERE id = ?');
+        $stmt->execute([$id]);
+        if (! $stmt->fetch()) {
+            $this->json(['error' => 'Rule not found.'], 404);
+        }
+
+        $b = $this->body();
+        $fields = [];
+        $params = [];
+        if (array_key_exists('enabled', $b)) {
+            $fields[] = 'enabled = ?';
+            $params[] = ! empty($b['enabled']) ? 1 : 0;
+        }
+        if (array_key_exists('retain_days', $b)) {
+            $fields[] = 'retain_days = ?';
+            $params[] = max(0, (int) $b['retain_days']);
+        }
+        if (array_key_exists('keep_last', $b)) {
+            $fields[] = 'keep_last = ?';
+            $params[] = min(100, max(0, (int) $b['keep_last']));
+        }
+        if (! $fields) {
+            $this->json(['error' => 'Nothing to update.'], 422);
+        }
+        $params[] = $id;
+        $this->db->prepare('UPDATE log_rules SET ' . implode(', ', $fields) . ' WHERE id = ?')
+            ->execute($params);
+
+        $this->json(['ok' => true]);
+    }
+
+    private function deleteLogRule(int $id): void
+    {
+        $stmt = $this->db->prepare('SELECT action FROM log_rules WHERE id = ?');
+        $stmt->execute([$id]);
+        $action = $stmt->fetchColumn();
+        if ($action === false) {
+            $this->json(['error' => 'Rule not found.'], 404);
+        }
+        $this->db->prepare('DELETE FROM log_rules WHERE id = ?')->execute([$id]);
+
+        Database::log($this->db, 'admin_log_rule', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
+            'rule deleted: ' . $action, true);
+
+        $this->json(['ok' => true]);
+    }
+
+    private function purgeLogs(): void
+    {
+        $deleted = LogRetention::run($this->db);
+        @file_put_contents(dirname(__DIR__) . '/data/.logpurge', gmdate('c') . ' manual');
+
+        Database::log($this->db, 'admin_log_purge', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
+            json_encode($deleted), true);
+
+        $this->json(['ok' => true, 'deleted' => $deleted, 'total' => array_sum($deleted)]);
     }
 
     /* ─────────────────────────── maintenance mode ─────────────────────────── */

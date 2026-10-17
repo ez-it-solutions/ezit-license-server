@@ -198,7 +198,7 @@ pre .k{color:#8fa386}pre .s{color:#a8d47a}pre .n{color:#e0b56a}pre .c{color:#5f7
   <div class="chips">
     <span class="chip"><b>9</b> site endpoints</span>
     <span class="chip"><b>1</b> push channel</span>
-    <span class="chip"><b>18</b> admin routes</span>
+    <span class="chip"><b>21</b> admin routes</span>
     <span class="chip">HMAC-signed certs &amp; tokens</span>
     <span class="chip">503 maintenance + Retry-After</span>
     <span class="chip">Per-IP throttles</span>
@@ -421,6 +421,9 @@ const ENDPOINTS=[
 {group:'Admin API (session + CSRF)',id:'admin-updates',m:'POST',path:'/admin-api/updates',
  desc:'Publish an update package (multipart: product_id, version, summary?, changelog?, has_sql?, package=zip ≤250MB). Stored under data/updates/; bumps products.latest_version when newer. DELETE /admin-api/updates/{id} removes package + file.',
  params:[],ok:{data:{id:1,update_id:'A1B2C3D4',version:'1.2.0'}},codes:['HTTP 401','HTTP 419','HTTP 422','HTTP 413'],admin:true},
+{group:'Admin API (session + CSRF)',id:'admin-log-rules',m:'GET/POST',path:'/admin-api/log-rules',
+ desc:'Retention rules (mail-filter style). action or \'*\' catch-all; retain_days 0=forever; keep_last pins newest N rows per site×license. PUT/DELETE /admin-api/log-rules/{id} toggles/removes. POST /admin-api/logs/purge runs a pass now; automatic daily run otherwise.',
+ params:[],ok:{data:{rules:[{action:'verify',retain_days:7,keep_last:1}],actions:['verify'],counts:{verify:1234}}},codes:['HTTP 401','HTTP 419','HTTP 409'],admin:true},
 {group:'Admin API (session + CSRF)',id:'admin-maintenance',m:'GET/PUT',path:'/admin-api/maintenance',
  desc:'Planned-maintenance switch (Server Config panel). GET reads state; PUT {enabled:true} writes data/.maintenance — a file flag so it still answers 503 SERVER_UNAVAILABLE + Retry-After even if the DB is down.',
  params:[['enabled','bool','PUT only']],

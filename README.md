@@ -118,6 +118,18 @@ license on the calling domain. Publishing bumps `products.latest_version`
 so `get_config` reports the newest release. PHP's `upload_max_filesize`
 /`post_max_size` must exceed your zip size (hard cap 250 MB).
 
+## Activity-log retention
+
+Dashboard → **Activity Log → Retention rules** — mail-filter style rules
+per `action` (or `*` catch-all): **keep for** N days (0 = forever) and
+**pin last** N newest rows per site × license, so every site keeps its
+last-known record even after its rows expire. A purge runs automatically
+once a day (`data/.logpurge` flag) or on demand via **Run purge now**.
+
+Seeded defaults: `verify`/`connect` 7 days (pin last 1), `config_fetch`
+14, `update_check`/`push`/`access_login` 30, `download` 90,
+`admin_login_fail` 180, **`activate`/`deactivate` forever**, `*` 90.
+
 ## Activation rules
 
 - Same domain re-activating → idempotent refresh (safe to re-run).

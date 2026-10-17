@@ -743,7 +743,80 @@
         } catch (e) {
             $('#logs-info').textContent = 'Load failed: ' + e.message;
         }
+        loadLogRules();
     }
+
+    /* ── log retention rules ── */
+    async function loadLogRules() {
+        let d;
+        try {
+            d = (await api('log-rules')).data;
+        } catch (e) {
+            $('#rules-note').textContent = 'Rules failed to load: ' + e.message;
+            return;
+        }
+        const counts = d.counts || {};
+        const totalRows = d.total || 0;
+
+        // Action select — known actions + the '*' catch-all.
+        const sel = $('#rule-action');
+        const opts = d.actions.includes('*') ? d.actions : ['*', ...d.actions];
+        sel.innerHTML = opts.map((a) => `<option value="${a}">${a === '*' ? '* — everything else (catch-all)' : a}</option>`).join('');
+
+        $('#rules-table tbody').innerHTML = d.rules.length
+            ? d.rules.map((r) => `<tr>
+                <td class="mono">${esc(r.action)}${r.action === '*' ? ' <small style="color:var(--muted)">(catch-all)</small>' : ''}</td>
+                <td>${+r.retain_days === 0 ? '<span class="badge badge-ok">forever</span>' : r.retain_days + ' days'}</td>
+                <td>${+r.keep_last > 0 ? 'last ' + r.keep_last + ' / site' : '—'}</td>
+                <td><input type="checkbox" ${+r.enabled ? 'checked' : ''} onchange="EZL.toggleRule(${r.id}, this.checked)" style="width:auto"></td>
+                <td>${r.action === '*' ? totalRows : (counts[r.action] || 0)}</td>
+                <td><div class="row-actions"><button class="btn btn-danger" onclick="EZL.deleteRule(${r.id})">Delete</button></div></td>
+            </tr>`).join('')
+            : '<tr><td colspan="6" class="empty">No rules — the log grows forever</td></tr>';
+
+        $('#rules-note').textContent = `${totalRows.toLocaleString()} rows total · next automatic purge within 24h`;
+    }
+
+    window.EZL.toggleRule = async (id, on) => {
+        try {
+            await api('log-rules/' + id, { method: 'PUT', body: { enabled: on ? 1 : 0 } });
+            toast('Rule ' + (on ? 'enabled' : 'paused'));
+        } catch (e) { toast('Update failed: ' + e.message); }
+        loadLogRules();
+    };
+    window.EZL.deleteRule = async (id) => {
+        if (!await askConfirm('Delete this retention rule? Rows it covered fall to the catch-all (or keep forever if none).', 'Delete')) return;
+        try {
+            await api('log-rules/' + id, { method: 'DELETE' });
+            toast('Rule deleted');
+        } catch (e) { toast('Delete failed: ' + e.message); return; }
+        loadLogRules();
+    };
+
+    $('#rule-forever').addEventListener('change', (e) => { $('#rule-days').disabled = e.target.checked; });
+    $('#rule-add').addEventListener('click', async () => {
+        try {
+            await api('log-rules', {
+                method: 'POST',
+                body: {
+                    action: $('#rule-action').value,
+                    retain_days: $('#rule-forever').checked ? 0 : Math.max(0, parseInt($('#rule-days').value || '0', 10)),
+                    keep_last: Math.max(0, parseInt($('#rule-keep').value || '0', 10)),
+                    enabled: 1,
+                },
+            });
+            toast('Rule added');
+        } catch (e) { toast('Add failed: ' + e.message); return; }
+        loadLogRules();
+    });
+
+    $('#purge-now').addEventListener('click', async () => {
+        try {
+            const r = await api('logs/purge', { method: 'POST' });
+            toast(r.total ? 'Purged ' + r.total + ' rows' : 'Nothing to purge');
+        } catch (e) { toast('Purge failed: ' + e.message); return; }
+        loadLogs();
+    });
 
     const resetLogs = () => { logPage = 1; loadLogs(); };
     $('#logs-prev').addEventListener('click', () => { logPage--; loadLogs(true); });

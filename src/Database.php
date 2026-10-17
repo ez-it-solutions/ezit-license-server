@@ -154,6 +154,15 @@ CREATE TABLE IF NOT EXISTS server_configs (
     note         TEXT DEFAULT NULL,                -- admin note: why this version was published
     published_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS log_rules (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    action      VARCHAR(64) NOT NULL,            -- activity_logs.action or '*' catch-all
+    retain_days INTEGER NOT NULL DEFAULT 90,     -- 0 = keep forever
+    keep_last   INTEGER NOT NULL DEFAULT 0,      -- pin newest N rows per action×license×domain
+    position    INTEGER NOT NULL DEFAULT 0,      -- rule order (first action-match wins)
+    enabled     INTEGER NOT NULL DEFAULT 1
+);
 CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_licenses_code ON licenses(code);
 CREATE INDEX IF NOT EXISTS idx_activations_domain ON activations(domain);
@@ -228,6 +237,10 @@ SQL);
         if ((int) $pdo->query('SELECT COUNT(*) FROM server_configs')->fetchColumn() === 0) {
             ServerConfig::publish($pdo, ServerConfig::defaultDoc(), 'Initial bootstrap config');
         }
+
+        // Log-retention starter rules (verify/connect purge fast but pin
+        // each site's last record; activate/deactivate keep forever).
+        LogRetention::seed($pdo);
     }
 
     public static function log(

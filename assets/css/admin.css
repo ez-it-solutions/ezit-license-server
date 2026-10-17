@@ -170,6 +170,17 @@ h2 { font-size: 1.05rem; font-weight: 600; margin: 1.6rem 0 .7rem; color: var(--
 [data-theme="light"] .file-pick:hover .file-pick-btn { border-color: var(--green-dark); color: var(--green-dark); }
 .file-pick-name { font-size: .85rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ── Retention rules ── */
+.rule-add {
+    display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+    padding: .8rem; border-top: 1px solid var(--td-border);
+}
+.rule-add select { width: 240px; }
+.rule-add input[type="number"] { width: 90px; }
+.rule-add input[type="number"]:disabled { opacity: .45; }
+.rule-check { display: flex; align-items: center; gap: .4rem; margin: 0; font-size: .8rem; color: var(--muted); }
+.rule-check input[type="checkbox"] { width: auto; }
+
 /* ── Controls ── */
 label { display: block; font-size: .8rem; color: var(--muted); margin: .85rem 0 .3rem; }
 input, select, textarea {

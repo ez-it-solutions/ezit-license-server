@@ -189,6 +189,24 @@
                     <button class="btn btn-ghost btn-sm" id="logs-next">Next →</button>
                 </div>
             </div>
+
+            <h2>Retention rules</h2>
+            <p class="hint">Mail-filter style: each action is governed by its most specific rule — <code>*</code> is the catch-all. <em>Keep for</em> is the max age in days (<b>forever</b> = never purge); <em>Pin last</em> always keeps that many newest rows <b>per site &amp; license</b>, even expired — your last-known record for diagnostics. Runs automatically once a day, or on demand.</p>
+            <div class="panel">
+                <table id="rules-table">
+                    <thead><tr><th>Action</th><th>Keep for</th><th>Pin last</th><th>Enabled</th><th>Log rows</th><th></th></tr></thead>
+                    <tbody></tbody>
+                </table>
+                <div class="rule-add">
+                    <select id="rule-action" title="Which log action this rule governs"></select>
+                    <input id="rule-days" type="number" min="0" value="30" title="Keep for N days">
+                    <label class="rule-check"><input type="checkbox" id="rule-forever"> forever</label>
+                    <input id="rule-keep" type="number" min="0" max="100" value="0" title="Always pin the newest N rows per site">
+                    <button class="btn" id="rule-add" type="button">+ Add rule</button>
+                    <button class="btn btn-primary" id="purge-now" type="button">Run purge now</button>
+                </div>
+            </div>
+            <p class="hint" id="rules-note"></p>
         </section>
 
         <!-- Server config -->

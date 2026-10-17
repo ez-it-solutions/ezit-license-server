@@ -37,7 +37,7 @@ same commit as any API change). Interactive copy with a try-it console:
 | Rate limiting | ✅ live | Per-IP failure throttles: `activate_license` (10/10min), `access_login` (8/10min), admin `login` (8/10min) — backed by `activity_logs`, 429 over the cap |
 | Maintenance mode | ✅ live | `data/.maintenance` flag (or `'maintenance' => true` in config.php) → every `/api/*` returns 503 `SERVER_UNAVAILABLE` + `Retry-After` instantly; dashboard toggle at Server Config |
 | Offline recovery (recovery codes) | ✅ live | Hash-only storage (`recovery_code_hash` + `recovery_digest`); raw code shown once at mint/regen; digest ships in the signed cert + every `verify_license` — sites validate codes offline (HMAC keyed with `api_key`) to arm the gate override |
-| Log retention | ⬜ not started | `activity_logs` grows unbounded |
+| Log retention | ✅ live | `log_rules` — mail-filter style rules per action (or `*`): `retain_days` (0=forever) + `keep_last` pinning newest N rows per action×license×domain; daily auto-run + Activity Log panel; activate/deactivate seeded forever |
 
 ## Known caveats
 
@@ -237,7 +237,9 @@ re-points itself on next check.
   accepts it; only re-issued certs pick up changes).
 - ~~[P1] Rate limiting~~ — done (activity_logs-backed per-IP failure
   throttles on `activate_license`, `access_login`, admin `login`).
-- **[P1] Log retention** — scheduled purge of `activity_logs` >90 days.
+- ~~[P1] Log retention~~ — done: `src/LogRetention.php` + `log_rules`
+  table; per-action rules with per-site `keep_last` pinning; daily
+  file-flag run in `index.php` + manual purge from Activity Log.
 
 ---
 

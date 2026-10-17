@@ -25,6 +25,7 @@ spl_autoload_register(function (string $class): void {
 use EzIT\LicenseServer\AdminApi;
 use EzIT\LicenseServer\Database;
 use EzIT\LicenseServer\LicenseApi;
+use EzIT\LicenseServer\LogRetention;
 
 $configFile = __DIR__ . '/config/config.php';
 $installed = is_file($configFile);
@@ -73,6 +74,14 @@ if (str_starts_with($uri, '/admin-api') || $uri === '/' || ! str_starts_with($ur
 
 $pdo = Database::connect($config);
 Database::migrate($pdo);
+
+// Log retention — runs at most once/day (file-flag). A purge failure
+// must never break a request, so it's swallowed here.
+try {
+    LogRetention::maybeRun($pdo, __DIR__ . '/data');
+} catch (Throwable) {
+    // next request retries
+}
 
 // ── Routes ──────────────────────────────────────────────────────────
 if (str_starts_with($uri, '/api/')) {
