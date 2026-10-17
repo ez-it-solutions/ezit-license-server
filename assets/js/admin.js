@@ -206,10 +206,11 @@
         const firstTab = view.querySelector('.tab').dataset.tab;
         view.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tabId));
         view.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('hidden', p.id !== 'tab-' + tabId));
-        // Head actions (search / filters / New-license) only make sense
-        // on the primary tab — hide them elsewhere.
-        const head = view.querySelector('.head-actions');
-        if (head) head.classList.toggle('hidden', tabId !== firstTab);
+        // Head actions + view-head search only make sense on the primary
+        // tab — hide them elsewhere (activations has its own pane search).
+        view.querySelectorAll('.head-actions, .head-search').forEach((el) => {
+            el.classList.toggle('hidden', tabId !== firstTab);
+        });
         if (tabId === 'activations-list') loadActivations();
     }
     $$('.tab').forEach((b) => b.addEventListener('click', () => openTab(b.dataset.tab)));
@@ -475,13 +476,13 @@
     function setTopStatus(m) {
         const el = $('#top-status');
         if (!m) {
-            el.textContent = 'API status unknown';
+            el.innerHTML = '<span class="status-dot"></span>API status unknown';
             el.className = 'status-pill status-muted';
             el.title = 'Could not read maintenance/API state';
             return;
         }
-        el.textContent = m.maintenance ? '⚠ Maintenance mode' : '● API online';
-        el.className = 'status-pill ' + (m.maintenance ? 'status-warn' : 'status-ok');
+        el.innerHTML = '<span class="status-dot"></span>' + (m.maintenance ? 'Maintenance mode' : 'API online');
+        el.className = 'status-pill ' + (m.maintenance ? 'status-bad' : 'status-ok');
         el.title = m.maintenance
             ? 'All public license calls return 503' + (m.since ? ' — since ' + m.since : '')
             : 'Public API is serving license calls normally';

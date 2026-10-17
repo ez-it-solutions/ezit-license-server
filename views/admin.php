@@ -62,7 +62,7 @@
 
     <main class="main">
         <header class="topbar">
-            <div class="top-status"><span id="top-status" class="status-pill status-muted" title="Public API state">Checking…</span></div>
+            <div class="top-status"><span id="top-status" class="status-pill status-muted" title="Public API state"><span class="status-dot"></span>Checking…</span></div>
             <div class="top-actions">
                 <button id="theme-toggle" class="top-icon" type="button" title="Toggle theme" aria-label="Toggle theme"></button>
                 <div class="top-user">
@@ -99,10 +99,9 @@
 
         <!-- Licenses (activations live in the second tab) -->
         <section id="view-licenses" class="view hidden">
-            <div class="view-head">
-                <h1>Licenses</h1>
+            <div class="view-head"><h1>Licenses</h1>
+                <input id="license-search" class="input-sm head-search" placeholder="Search code / client / email…">
                 <div class="head-actions" id="lic-actions">
-                    <input id="license-search" class="input-sm" placeholder="Search code / client / email…">
                     <button class="btn btn-primary" id="new-license-btn">+ New license</button>
                 </div>
             </div>
@@ -166,10 +165,9 @@
 
         <!-- Logs -->
         <section id="view-logs" class="view hidden">
-            <div class="view-head">
-                <h1>Activity Log</h1>
+            <div class="view-head"><h1>Activity Log</h1>
+                <input id="logs-q" class="input-sm head-search" placeholder="Search license / domain / IP / detail…">
                 <div class="head-actions" id="log-actions">
-                    <input id="logs-q" class="input-sm" placeholder="Search license / domain / IP / detail…">
                     <select id="logs-action" class="input-sm"><option value="">All actions</option></select>
                     <select id="logs-result" class="input-sm">
                         <option value="">All results</option>

@@ -214,9 +214,10 @@ input[readonly] { background: var(--panel2); color: var(--muted); cursor: defaul
 .btn-sm { padding: .3rem .7rem; font-size: .85rem; }
 .btn-block { width: 100%; margin-top: 1.2rem; padding: .7rem; }
 .btn-danger { color: var(--danger); }
-.view-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.1rem; }
-.view-head h1 { margin: 0; }
-.head-actions { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.view-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.1rem; gap: .9rem; }
+.view-head h1 { margin: 0; flex: none; }
+.head-search { flex: 1; min-width: 160px; max-width: 380px; }
+.head-actions { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-left: auto; }
 select.input-sm { width: auto; }
 .pager { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: .9rem; flex-wrap: wrap; }
 .pager-top { margin-top: 0; margin-bottom: .9rem; justify-content: flex-end; }
@@ -341,15 +342,6 @@ th.sortable.sort-desc::after { content: '\2193'; opacity: 1; color: var(--green)
 
 @media (max-width: 860px) {
     .app { grid-template-columns: 1fr; }
-    .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
-    .sidebar nav { display: flex; flex-wrap: wrap; gap: .2rem; }
-    .main { padding: 1.2rem; }
-    .topbar { position: static; height: auto; margin: -1.2rem -1.2rem 1.2rem; padding: .7rem 1.2rem; }
-    .sidebar-cred { width: 100%; }
-    .grid2, .grid3 { grid-template-columns: 1fr; }
-    .input-sm { width: 100%; }
-    .view-head { flex-direction: column; align-items: flex-start; gap: .7rem; }
-}
     .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
     .sidebar nav { display: flex; flex-wrap: wrap; gap: .2rem; }
     .main { padding: 1.2rem; }
