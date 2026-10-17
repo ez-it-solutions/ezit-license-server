@@ -1,0 +1,26 @@
+# Ez IT Solutions License Server — Apache config
+# All requests route through index.php (front controller).
+
+RewriteEngine On
+
+# Block sensitive paths FIRST — config.php, the SQLite DB and source files
+# must never be reachable as static files.
+RewriteRule ^(config|data|src|docs)/ - [F,L]
+
+# Existing files/dirs are served directly (assets/, favicon, …)
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Everything else → front controller
+RewriteRule ^ index.php [L]
+
+# Security headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "same-origin"
+</IfModule>
+
+# Never list directories
+Options -Indexes
