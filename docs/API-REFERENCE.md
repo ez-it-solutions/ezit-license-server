@@ -43,17 +43,29 @@ Every site request carries the LicenseBox headers:
 | `ACTIVATION_DISABLED` | This domain's activation row was disabled |
 | `DOMAIN_NOT_ACTIVATED` | Cert's bound domain ≠ request's `LB-URL` domain |
 | `ACTIVATED_MAXIMUM_ALLOWED_PRODUCT_INSTANCES` | `max_activations` seats full |
+| `SERVER_UNAVAILABLE` | Maintenance mode is on — every `/api/*` call gets **HTTP 503** + `Retry-After` instantly (fail-fast, not a verdict — sites keep last verdict) |
 | HTTP 429 | Per-IP failure throttle (see §5) |
 | HTTP 400 | `product_id` mismatch / missing required fields |
+
+**Outage semantics:** transport failure and `SERVER_UNAVAILABLE` are
+*not verdicts* — a site keeps its last verdict and re-checks on the
+`Retry-After` window (10-min floor). A real `{status:false}` with any
+other `status_code` is authoritative.
 
 ### License certificate (`lic_response` / `license_file`)
 
 `<64-hex HMAC-SHA256><base64url(json)>` — signature keyed
 `server_secret|api_key`; payload pins `license_code`, `product_id`,
 `domain`, `client_name`, `ip`, `activated_at`, `expires_at`, `issuer`,
-`max_activations`, `used_activations`, `features[]`. The site stores it
-verbatim and echoes it back; it cannot be edited or moved to another
-domain/product.
+`max_activations`, `used_activations`, `features[]`, `recovery_digest`.
+The site stores it verbatim and echoes it back; it cannot be edited or
+moved to another domain/product.
+
+`recovery_digest` = `HMAC-SHA256("recovery|" + recovery_code, api_key)`.
+Each product has a recovery code (dashboard → Products → Recovery code);
+the raw code never crosses the wire. A site validates an entered code
+offline by recomputing the digest — this is what arms the site's
+emergency gate override while the server is down.
 
 ---
 
@@ -71,7 +83,7 @@ the `activations` row with declared `site_url`/domain.
 
 ### `verify_license`
 **In:** `license_file`
-**Out:** `{status, status_code?, expires_at, config_version, message}`
+**Out:** `{status, status_code?, expires_at, recovery_digest?, config_version, message}`
 The verdict call. `config_version` hints the site to re-read
 `get_config` when it moved.
 
@@ -153,6 +165,7 @@ All other calls need `X-CSRF-TOKEN`. Throttled 8 fails/IP/10min.
 | `logs` | GET | `?q=&action=&result=&page=&per=` (per 10–200) + distinct `actions` list |
 | `config` | GET/POST | current doc + history / publish new version |
 | `config/{id}` | GET | one historical version |
+| `maintenance` | GET/PUT | read / toggle the `data/.maintenance` flag — while set, `/api/*` answers 503 `SERVER_UNAVAILABLE` instantly; admin panel stays up |
 
 ---
 

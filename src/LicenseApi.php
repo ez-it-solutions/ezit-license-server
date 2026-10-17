@@ -25,6 +25,17 @@ final class LicenseApi
     {
         $path = trim($path, '/');
 
+        // Planned outage: answer instantly so client sites fail fast
+        // (no 20s timeouts) and can mark the server "maintenance".
+        if ($this->maintenanceMode()) {
+            header('Retry-After: 300');
+            $this->json([
+                'status' => false,
+                'status_code' => 'SERVER_UNAVAILABLE',
+                'message' => 'License server is temporarily unavailable for maintenance.',
+            ], 503);
+        }
+
         match (true) {
             $path === 'check_connection_ext' => $this->checkConnection(),
             $path === 'activate_license' => $this->activateLicense(),
@@ -128,7 +139,8 @@ final class LicenseApi
             $clientName,
             $domain,
             $ip,
-            $license['expires_at']
+            $license['expires_at'],
+            ['features' => $this->features($license), 'recovery_digest' => $this->recoveryDigest($product)]
         );
 
         $this->log('activate', $license['id'], true, $existing ? 're-activated' : 'activated', $domain, $ip);
@@ -250,6 +262,7 @@ final class LicenseApi
             'licensed_to' => $license['client_name'],
             'activated_at' => $activation['activated_at'],
             'expires_at' => $license['expires_at'],
+            'recovery_digest' => $this->recoveryDigest($product),
             'config_version' => $this->configVersion(),
         ]);
     }
@@ -561,6 +574,30 @@ final class LicenseApi
     private function configVersion(): int
     {
         return ServerConfig::current($this->db)['version'] ?? 0;
+    }
+
+    /**
+     * Offline emergency-override proof shipped to sites: HMAC digest of
+     * the product's recovery code keyed with the product api_key. The raw
+     * code never leaves the server; a site validates an entered code by
+     * recomputing this digest (works with the server completely offline).
+     */
+    private function recoveryDigest(array $product): ?string
+    {
+        $code = (string) ($product['recovery_code'] ?? '');
+
+        return $code === '' ? null : hash_hmac('sha256', 'recovery|' . $code, $product['api_key']);
+    }
+
+    /**
+     * Planned-outage switch: set 'maintenance' => true in config.php, or
+     * drop a flag file at data/.maintenance (toggleable from the dashboard
+     * via PUT /admin-api/maintenance). File-flag survives DB outages.
+     */
+    private function maintenanceMode(): bool
+    {
+        return ! empty($this->config['maintenance'])
+            || is_file(dirname(__DIR__) . '/data/.maintenance');
     }
 
     private function log(string $action, ?int $licenseId, bool $success, ?string $detail = null, ?string $domain = null, ?string $ip = null): void

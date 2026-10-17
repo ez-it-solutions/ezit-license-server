@@ -64,6 +64,8 @@ final class AdminApi
             $resource === 'config' && $method === 'GET' => $this->getConfig(),
             $resource === 'config' && $method === 'POST' => $this->publishConfig(),
             $resource === 'account' && $method === 'PUT' => $this->updateAccount(),
+            $path === 'maintenance' && $method === 'GET' => $this->getMaintenance(),
+            $path === 'maintenance' && $method === 'PUT' => $this->setMaintenance(),
             default => $this->json(['error' => 'Not found'], 404),
         };
     }
@@ -190,12 +192,13 @@ final class AdminApi
 
         $apiKey = bin2hex(random_bytes(10)); // 20-char key, same style as Botble's
         $this->db->prepare(
-            'INSERT INTO products (product_id, name, api_key, latest_version) VALUES (?, ?, ?, ?)'
+            'INSERT INTO products (product_id, name, api_key, latest_version, recovery_code) VALUES (?, ?, ?, ?, ?)'
         )->execute([
             $productId,
             $name,
             $apiKey,
             trim((string) ($b['latest_version'] ?? '1.0.0')),
+            Database::generateRecoveryCode(),
         ]);
 
         $this->json(['data' => ['id' => $this->db->lastInsertId(), 'api_key' => $apiKey]], 201);
@@ -577,6 +580,38 @@ final class AdminApi
         ]);
     }
 
+    /* ─────────────────────────── maintenance mode ─────────────────────────── */
+
+    /** Flag-file path — file flag works even when the DB is down. */
+    private function maintenancePath(): string
+    {
+        return dirname(__DIR__) . '/data/.maintenance';
+    }
+
+    private function getMaintenance(): void
+    {
+        $this->json([
+            'maintenance' => is_file($this->maintenancePath()) || ! empty($this->config['maintenance']),
+            'since' => is_file($this->maintenancePath()) ? trim((string) @file_get_contents($this->maintenancePath())) : null,
+        ]);
+    }
+
+    private function setMaintenance(): void
+    {
+        $on = ! empty($this->body()['enabled']);
+        $file = $this->maintenancePath();
+
+        if ($on) {
+            file_put_contents($file, gmdate('c'));
+        } elseif (is_file($file)) {
+            unlink($file);
+        }
+
+        Database::log($this->db, 'admin_maintenance', null, null, $_SERVER['REMOTE_ADDR'] ?? null, $on ? 'maintenance ON' : 'maintenance OFF', true);
+
+        $this->json(['ok' => true, 'maintenance' => $on]);
+    }
+
     private function updateAccount(): void
     {
         $b = $this->body();
@@ -627,6 +662,11 @@ final class AdminApi
         );
 
         return strtoupper($uuid);
+    }
+
+    public static function generateRecoveryCode(): string
+    {
+        return Database::generateRecoveryCode();
     }
 
     private function body(): array

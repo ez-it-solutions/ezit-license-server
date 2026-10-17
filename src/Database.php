@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS products (
     api_key        VARCHAR(64) NOT NULL UNIQUE,   -- sent by client as LB-API-KEY header
     latest_version VARCHAR(32) NOT NULL DEFAULT '1.0.0',
     status         VARCHAR(16) NOT NULL DEFAULT 'enabled', -- enabled|disabled — disabled rejects ALL API calls
+    recovery_code  VARCHAR(40) DEFAULT NULL,    -- offline override code; digest ships inside signed certs
     created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -177,6 +178,19 @@ SQL);
             // column already exists
         }
 
+        // Same for products.recovery_code (offline emergency-override code)
+        try {
+            $pdo->exec('ALTER TABLE products ADD COLUMN recovery_code VARCHAR(40) DEFAULT NULL');
+        } catch (PDOException) {
+            // column already exists
+        }
+        // Backfill any product that predates the column.
+        $missing = $pdo->query('SELECT id FROM products WHERE recovery_code IS NULL OR recovery_code = \'\'')->fetchAll(PDO::FETCH_COLUMN);
+        $upd = $pdo->prepare('UPDATE products SET recovery_code = ? WHERE id = ?');
+        foreach ($missing as $pid) {
+            $upd->execute([self::generateRecoveryCode(), $pid]);
+        }
+
         // Seed the bootstrap config (v1) so /api/get_config always has a
         // coherent document before anyone publishes from the admin panel.
         if ((int) $pdo->query('SELECT COUNT(*) FROM server_configs')->fetchColumn() === 0) {
@@ -198,6 +212,22 @@ SQL);
              VALUES (?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([$licenseId, $action, $domain, $ip, $detail, $success ? 1 : 0]);
+    }
+
+    /**
+     * Emergency-override code for a product: 16 base32 chars in 4 groups.
+     * Sites never see the raw code — they receive its HMAC digest inside
+     * the signed cert / verify response and validate entries locally.
+     */
+    public static function generateRecoveryCode(): string
+    {
+        $alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no I/L/O/0/1
+        $code = '';
+        for ($i = 0; $i < 16; $i++) {
+            $code .= $alphabet[random_int(0, 31)] . (($i % 4 === 3 && $i < 15) ? '-' : '');
+        }
+
+        return $code;
     }
 
     public static function normalizeDomain(string $url): string

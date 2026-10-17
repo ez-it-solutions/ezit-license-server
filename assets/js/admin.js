@@ -273,7 +273,32 @@
             msg.textContent = 'Failed to load config: ' + err.message;
             msg.classList.remove('hidden');
         }
+        try {
+            const m = await api('maintenance');
+            $('#maint-state').textContent = m.maintenance
+                ? 'ON — all public API calls return 503 SERVER_UNAVAILABLE instantly' + (m.since ? ' (since ' + m.since + ')' : '')
+                : 'OFF — public API is serving normally';
+            $('#maint-toggle').textContent = m.maintenance ? 'Disable maintenance mode' : 'Enable maintenance mode';
+            $('#maint-toggle').className = 'btn ' + (m.maintenance ? 'btn-primary' : 'btn-danger');
+        } catch (e2) {
+            $('#maint-state').textContent = 'status unknown: ' + e2.message;
+        }
     }
+
+    $('#maint-toggle').addEventListener('click', async () => {
+        const turningOn = $('#maint-toggle').textContent.indexOf('Enable') === 0;
+        if (!await askConfirm(
+            turningOn
+                ? 'Enable maintenance mode? Every client license call will fail fast with 503 SERVER_UNAVAILABLE until you turn this off. Sites with valid licenses stay open on their grace window.'
+                : 'Disable maintenance mode and resume normal license service?',
+            turningOn ? 'Enable' : 'Disable'
+        )) return;
+        try {
+            await api('maintenance', { method: 'PUT', body: { enabled: turningOn } });
+            toast('Maintenance mode ' + (turningOn ? 'ON' : 'OFF'));
+            loadConfig();
+        } catch (e3) { toast('Toggle failed: ' + e3.message); }
+    });
 
     $('#cfg-publish').addEventListener('click', async () => {
         const msg = $('#cfg-msg');
@@ -445,6 +470,7 @@
                 <td>${esc(p.name)}</td>
                 <td class="mono">${esc(p.product_id)}</td>
                 <td class="mono">${esc(p.api_key)}</td>
+                <td class="mono" title="Offline emergency-override code — enter it on a site's License Gate settings to force the gate open/closed while this server is unreachable">${esc(p.recovery_code || '—')}</td>
                 <td>${esc(p.latest_version)}</td>
                 <td>${badge(p.status || 'enabled')}</td>
                 <td>${p.license_count}</td>
@@ -453,7 +479,7 @@
                     <button class="btn" onclick="EZL.toggleProduct(${p.id})">${(p.status || 'enabled') === 'enabled' ? 'Disable' : 'Enable'}</button>
                     <button class="btn btn-danger" onclick="EZL.deleteProduct(${p.id})">Delete</button>
                 </div></td></tr>`).join('')
-            : '<tr><td colspan="7" class="empty">No products</td></tr>';
+            : '<tr><td colspan="8" class="empty">No products</td></tr>';
     }
 
     function openProductModal(p) {

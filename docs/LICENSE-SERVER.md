@@ -35,6 +35,8 @@ same commit as any API change). Interactive copy with a try-it console:
 | Support tickets | ⬜ not started | |
 | Payments (Invoice Ninja webhook) | ⬜ not started | billing.ez-it-solutions.com |
 | Rate limiting | ✅ live | Per-IP failure throttles: `activate_license` (10/10min), `access_login` (8/10min), admin `login` (8/10min) — backed by `activity_logs`, 429 over the cap |
+| Maintenance mode | ✅ live | `data/.maintenance` flag (or `'maintenance' => true` in config.php) → every `/api/*` returns 503 `SERVER_UNAVAILABLE` + `Retry-After` instantly; dashboard toggle at Server Config |
+| Offline recovery (recovery codes) | ✅ live | `products.recovery_code`; `recovery_digest` ships inside the signed cert + on `verify_license` — sites validate codes offline (HMAC keyed with `api_key`) to arm the plugin's gate override |
 | Log retention | ⬜ not started | `activity_logs` grows unbounded |
 
 ## Known caveats
@@ -42,7 +44,9 @@ same commit as any API change). Interactive copy with a try-it console:
 - **API-key rotation invalidates issued certs.** Cert HMAC is keyed
   `secret|api_key` — editing/regenerating a key breaks every stored
   `.license` until the site re-activates. Documented in the UI; consider
-  a "re-issue certs" follow-up step later.
+  a "re-issue certs" follow-up step later. Rotation also rotates the
+  `recovery_digest` (keyed with `api_key`) — sites pick up the new one on
+  re-activation/verify.
 - **Deactivate Mode B revokes ALL activations** of a license (not just
   the caller's domain). Intentional — matches Botble's free-the-seat
   flow — but be aware when scripting admin actions. Auth is

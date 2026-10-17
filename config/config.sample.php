@@ -35,6 +35,12 @@ return [
     // Public API rate limit (requests per minute per IP)
     'rate_limit_per_minute' => 60,
 
+    // Planned-outage switch: when true, every /api/* call returns
+    // 503 SERVER_UNAVAILABLE instantly (admin panel stays up).
+    // Same effect as dropping a file at data/.maintenance (dashboard
+    // → Server Config → Maintenance mode toggles that file).
+    // 'maintenance' => true,
+
     // Session cookie name
     'session_name' => 'ezitls',
 

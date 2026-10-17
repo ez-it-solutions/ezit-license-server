@@ -71,8 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ! $alreadyInstalled) {
         // Seed the Botble CMS product so existing sites work unchanged
         $productApiKey = bin2hex(random_bytes(10));
         $pdo->prepare(
-            'INSERT INTO products (product_id, name, api_key, latest_version) VALUES (?, ?, ?, ?)'
-        )->execute(['5F061D22', 'Botble CMS', $productApiKey, '1.25.1']);
+            'INSERT INTO products (product_id, name, api_key, latest_version, recovery_code) VALUES (?, ?, ?, ?, ?)'
+        )->execute(['5F061D22', 'Botble CMS', $productApiKey, '1.25.1', Database::generateRecoveryCode()]);
 
         $done = ['api_key' => $productApiKey, 'product_id' => '5F061D22', 'app_url' => $appUrl];
     } catch (Throwable $e) {

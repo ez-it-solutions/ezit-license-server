@@ -96,7 +96,7 @@
         <section id="view-products" class="view hidden">
             <div class="view-head"><h1>Products</h1><button class="btn btn-primary" id="new-product-btn">+ New product</button></div>
             <div class="panel"><table id="products-table">
-                <thead><tr><th>Name</th><th>Product ID</th><th>API key (LB-API-KEY)</th><th>Version</th><th>Status</th><th>Licenses</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>Product ID</th><th>API key (LB-API-KEY)</th><th>Recovery code</th><th>Version</th><th>Status</th><th>Licenses</th><th></th></tr></thead>
                 <tbody></tbody>
             </table></div>
             <p class="hint">Copy <code>api_key</code> into each site's <code>platform/core/core.json</code> as <code>"apiKey"</code>, and set <code>"apiUrl"</code> to this server's URL.</p>
@@ -138,6 +138,12 @@
         <section id="view-config" class="view hidden">
             <h1>Server Config <span id="cfg-version" class="badge badge-ok"></span></h1>
             <p class="hint">Bootstrap document served by <code>/api/get_config</code>. EzIT Core reads this to locate the API, endpoint map, services and notices. Every save publishes a new immutable version — sites detect it via <code>config_version</code>.</p>
+            <div class="panel form-panel" style="margin-bottom:1rem">
+                <label>Maintenance mode</label>
+                <p class="hint" style="margin-top:0">Planned outage: the public API answers every call instantly with <code>503 SERVER_UNAVAILABLE</code> so client sites fail fast instead of timing out. The admin panel stays up. Flag file: <code>data/.maintenance</code>.</p>
+                <p id="maint-state" class="mono" style="margin:.4rem 0">loading…</p>
+                <button class="btn" id="maint-toggle">…</button>
+            </div>
             <div class="panel form-panel">
                 <div id="cfg-msg" class="alert hidden"></div>
                 <label>Payload (JSON)</label>
