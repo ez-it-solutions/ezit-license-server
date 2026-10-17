@@ -102,11 +102,29 @@
     }
 
     function fillAdmin(admin) {
+        const initials = String(admin.name || '?')
+            .split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
         $('#foot-name').textContent = admin.name;
         $('#foot-email').textContent = admin.email;
-        $('#foot-avatar').textContent = String(admin.name || '?')
-            .split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+        $('#foot-avatar').textContent = initials;
+        $('#profile-btn').textContent = initials;
+        $('#pm-avatar').textContent = initials;
+        $('#pm-name').textContent = admin.name;
+        $('#pm-email').textContent = admin.email;
     }
+
+    /* ── profile dropdown ── */
+    const pmBtn = $('#profile-btn');
+    const pmMenu = $('#profile-menu');
+    const closeMenu = () => { pmMenu.classList.add('hidden'); pmBtn.setAttribute('aria-expanded', 'false'); };
+    pmBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = pmMenu.classList.toggle('hidden') === false;
+        pmBtn.setAttribute('aria-expanded', String(open));
+    });
+    document.addEventListener('click', (e) => { if (!e.target.closest('.top-user')) closeMenu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+    $('#pm-profile').addEventListener('click', () => { closeMenu(); navigate('account'); });
 
     function showLogin() {
         $('#login-screen').classList.remove('hidden');

@@ -114,7 +114,7 @@ h2 { font-size: 1.05rem; font-weight: 600; margin: 1.6rem 0 .7rem; color: var(--
 .sidebar-user b { display: block; font-size: .85rem; }
 .sidebar-user span { display: block; font-size: .72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-cred { padding: 0 1.2rem 1.1rem; font-size: .68rem; color: var(--muted); opacity: .75; }
-.main { padding: 1.8rem 2.2rem; max-width: 1200px; width: 100%; }
+.main { padding: 1.8rem 2.2rem; width: 100%; }
 
 /* ── Topbar ── */
 .topbar {
@@ -136,10 +136,36 @@ h2 { font-size: 1.05rem; font-weight: 600; margin: 1.6rem 0 .7rem; color: var(--
     display: grid; place-items: center; font-weight: 800; color: var(--on-green); font-size: .78rem;
 }
 
+/* ── Profile dropdown ── */
+.top-user { position: relative; }
+.avatar-btn { border: 0; padding: 0; cursor: pointer; }
+.avatar-btn:hover { filter: brightness(1.1); }
+.profile-menu {
+    position: absolute; right: 0; top: calc(100% + 10px); min-width: 230px; z-index: 60;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--card-shadow); padding: .5rem;
+}
+.profile-head { display: flex; align-items: center; gap: .7rem; padding: .55rem .7rem .8rem; }
+.profile-id { min-width: 0; }
+.profile-id b { display: block; font-size: .9rem; }
+.profile-id span { display: block; font-size: .72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-item {
+    display: flex; align-items: center; gap: .6rem; width: 100%; text-align: left;
+    padding: .55rem .7rem; border: 0; border-radius: 8px; background: transparent;
+    color: var(--text); font: inherit; cursor: pointer;
+}
+.pm-item:hover { background: var(--row-hover); }
+.pm-item svg { color: var(--muted); flex: none; }
+.pm-sep { height: 1px; background: var(--border); margin: .35rem .3rem; }
+.pm-logout { color: var(--danger); font-weight: 600; }
+.pm-logout svg { color: var(--danger); }
+
 /* ── File picker ── */
-.file-pick { position: relative; display: flex; align-items: center; gap: .7rem; }
+.file-pick { position: relative; display: flex; align-items: center; gap: .7rem; cursor: pointer; }
 .file-pick input[type="file"] { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
-.file-pick-btn { pointer-events: none; }
+.file-pick-btn { pointer-events: none; transition: border-color .12s, color .12s; }
+.file-pick:hover .file-pick-btn { border-color: var(--green); color: var(--green); }
+[data-theme="light"] .file-pick:hover .file-pick-btn { border-color: var(--green-dark); color: var(--green-dark); }
 .file-pick-name { font-size: .85rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Controls ── */

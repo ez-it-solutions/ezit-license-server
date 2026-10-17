@@ -66,9 +66,27 @@
             <h2 class="topbar-title" id="topbar-title">Dashboard</h2>
             <div class="top-actions">
                 <button id="theme-toggle" class="top-icon" type="button" title="Toggle theme" aria-label="Toggle theme"></button>
-                <button id="logout-btn" class="top-icon" type="button" title="Sign out" aria-label="Sign out">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                </button>
+                <div class="top-user">
+                    <button class="avatar avatar-btn" id="profile-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Account"></button>
+                    <div id="profile-menu" class="profile-menu hidden">
+                        <div class="profile-head">
+                            <div class="avatar" id="pm-avatar"></div>
+                            <div class="profile-id">
+                                <b id="pm-name"></b>
+                                <span id="pm-email"></span>
+                            </div>
+                        </div>
+                        <button class="pm-item" id="pm-profile" type="button">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            Account settings
+                        </button>
+                        <div class="pm-sep"></div>
+                        <button class="pm-item pm-logout" id="logout-btn" type="button">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                            Logout
+                        </button>
+                    </div>
+                </div>
             </div>
         </header>
 
