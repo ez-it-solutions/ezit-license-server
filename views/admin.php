@@ -102,7 +102,6 @@
             <div class="view-head"><h1>Licenses</h1>
                 <div class="head-actions" id="lic-actions">
                     <button class="btn btn-primary" id="new-license-btn">+ New license</button>
-                    <input id="license-search" class="input-sm head-search" placeholder="Search code / client / email…">
                 </div>
             </div>
             <div class="tabs">
@@ -110,6 +109,9 @@
                 <button class="tab" data-tab="activations-list" type="button">Activations</button>
             </div>
             <div id="tab-licenses-list" class="tab-pane">
+                <div class="pane-actions">
+                    <input id="license-search" class="input-sm" placeholder="Search code / client / email…">
+                </div>
                 <div class="panel"><table id="licenses-table">
                     <thead><tr><th>Code</th><th>Client</th><th>Product</th><th>Status</th><th>Activations</th><th>Expires</th><th></th></tr></thead>
                     <tbody></tbody>
