@@ -246,6 +246,7 @@
             el.classList.toggle('hidden', tabId !== firstTab);
         });
         if (tabId === 'activations-list') loadActivations();
+        if (tabId === 'catalog-list') loadCatalog();
     }
     $$('.tab').forEach((b) => b.addEventListener('click', () => openTab(b.dataset.tab)));
 
@@ -999,6 +1000,90 @@
             loadProducts();
         } catch (e2) {
             err.textContent = e2.message;
+            err.classList.remove('hidden');
+        }
+    });
+
+    /* ── marketplace catalog (Products → Catalog tab) ── */
+    let catalogItems = [];
+    let editingCatalog = null;
+
+    async function loadCatalog() {
+        try {
+            const r = await api('catalog');
+            catalogItems = r.data;
+            $('#cat-category').innerHTML = r.categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+        } catch (e) { toast('Catalog load failed: ' + e.message); return; }
+        $('#catalog-table tbody').innerHTML = catalogItems.length
+            ? catalogItems.map((c) => `<tr>
+                <td>${esc(c.product_name)}</td>
+                <td class="mono">${esc(c.slug)}</td>
+                <td>${esc(c.category)}</td>
+                <td class="mono">${esc(c.latest_version || '—')}</td>
+                <td>${c.price !== null ? '$' + Number(c.price).toFixed(2) : '—'}</td>
+                <td>${badge(c.is_free ? 'free' : 'paid')}</td>
+                <td>${badge(c.published ? 'published' : 'draft')}</td>
+                <td><div class="row-actions">
+                    <button class="btn" onclick="EZL.editCatalog(${c.id})">Edit</button>
+                    <button class="btn btn-danger" onclick="EZL.deleteCatalog(${c.id})">Delete</button>
+                </div></td></tr>`).join('')
+            : '<tr><td colspan="8" class="hint" style="padding:1rem">No catalog listings yet.</td></tr>';
+    }
+
+    function openCatalogModal(item) {
+        editingCatalog = item || null;
+        $('#catalog-modal-title').textContent = item ? 'Edit listing' : 'New listing';
+        $('#catalog-modal-error').classList.add('hidden');
+        $('#cat-product').innerHTML = products.map((p) =>
+            `<option value="${p.id}"${item && item.product_id === p.id ? ' selected' : ''}>${esc(p.name)} (${esc(p.product_id)})</option>`).join('');
+        $('#cat-slug').value = item ? item.slug : '';
+        $('#cat-category').value = item ? item.category : 'generic';
+        $('#cat-price').value = item && item.price !== null ? item.price : '';
+        $('#cat-thumb').value = (item && item.thumb) || '';
+        try { $('#cat-screens').value = item && item.screenshots ? JSON.parse(item.screenshots).join(', ') : ''; } catch { $('#cat-screens').value = ''; }
+        $('#cat-excerpt').value = (item && item.excerpt) || '';
+        $('#cat-body').value = (item && item.body) || '';
+        $('#cat-free').checked = !!(item && +item.is_free);
+        $('#cat-published').checked = !!(item && +item.published);
+        $('#catalog-modal').classList.remove('hidden');
+    }
+
+    $('#new-catalog-btn').addEventListener('click', () => openCatalogModal(null));
+    window.EZL.editCatalog = (id) => openCatalogModal(catalogItems.find((c) => c.id === id));
+    window.EZL.deleteCatalog = async (id) => {
+        const c = catalogItems.find((x) => x.id === id);
+        if (!await askConfirm(`Delete the listing "${c ? c.slug : id}"? The product itself is untouched.`, 'Delete')) return;
+        try { await api('catalog/' + id, { method: 'DELETE' }); toast('Listing deleted'); }
+        catch (e) { toast('Delete failed: ' + e.message); return; }
+        loadCatalog();
+    };
+
+    $('#cat-save').addEventListener('click', async () => {
+        const err = $('#catalog-modal-error');
+        err.classList.add('hidden');
+        const payload = {
+            product_id:  +$('#cat-product').value,
+            slug:        $('#cat-slug').value.trim(),
+            category:    $('#cat-category').value,
+            price:       $('#cat-price').value,
+            thumb:       $('#cat-thumb').value.trim(),
+            screenshots: $('#cat-screens').value,
+            excerpt:     $('#cat-excerpt').value.trim(),
+            body:        $('#cat-body').value.trim(),
+            is_free:     $('#cat-free').checked,
+            published:   $('#cat-published').checked,
+        };
+        try {
+            if (editingCatalog) {
+                await api('catalog/' + editingCatalog.id, { method: 'PUT', body: payload });
+            } else {
+                await api('catalog', { method: 'POST', body: payload });
+            }
+            $('#catalog-modal').classList.add('hidden');
+            toast(editingCatalog ? 'Listing updated' : 'Listing created');
+            loadCatalog();
+        } catch (e) {
+            err.textContent = e.message;
             err.classList.remove('hidden');
         }
     });

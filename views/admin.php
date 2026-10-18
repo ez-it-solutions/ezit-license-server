@@ -136,12 +136,32 @@
 
         <!-- Products -->
         <section id="view-products" class="view hidden">
-            <div class="view-head"><h1>Products</h1><button class="btn btn-primary" id="new-product-btn">+ New product</button></div>
-            <div class="panel"><table id="products-table">
-                <thead><tr><th>Name</th><th>Product ID</th><th>API key (LB-API-KEY)</th><th>Recovery code</th><th>Version</th><th>Status</th><th>Licenses</th><th></th></tr></thead>
-                <tbody></tbody>
-            </table></div>
-            <p class="hint">Copy <code>api_key</code> into each site's <code>platform/core/core.json</code> as <code>"apiKey"</code>, and set <code>"apiUrl"</code> to this server's URL.</p>
+            <div class="view-head"><h1>Products</h1>
+                <div class="head-actions">
+                    <button class="btn btn-primary" id="new-product-btn">+ New product</button>
+                </div>
+            </div>
+            <div class="tabs">
+                <button class="tab active" data-tab="products-list" type="button">Products</button>
+                <button class="tab" data-tab="catalog-list" type="button">Catalog</button>
+            </div>
+            <div id="tab-products-list" class="tab-pane">
+                <div class="panel"><table id="products-table">
+                    <thead><tr><th>Name</th><th>Product ID</th><th>API key (LB-API-KEY)</th><th>Recovery code</th><th>Version</th><th>Status</th><th>Licenses</th><th></th></tr></thead>
+                    <tbody></tbody>
+                </table></div>
+                <p class="hint">Copy <code>api_key</code> into each site's <code>platform/core/core.json</code> as <code>"apiKey"</code>, and set <code>"apiUrl"</code> to this server's URL.</p>
+            </div>
+            <div id="tab-catalog-list" class="tab-pane hidden">
+                <div class="pane-actions">
+                    <button class="btn btn-primary" id="new-catalog-btn">+ New listing</button>
+                </div>
+                <div class="panel"><table id="catalog-table">
+                    <thead><tr><th>Name</th><th>Slug</th><th>Category</th><th>Version</th><th>Price</th><th>Free</th><th>Published</th><th></th></tr></thead>
+                    <tbody></tbody>
+                </table></div>
+                <p class="hint">Published listings feed <code>GET /api/catalog</code> and <code>/api/catalog/{slug}</code> for the marketplace in Ez IT Core. <b>Free</b> listings expose the product's <code>api_key</code> in the detail response so sites can install without a purchase.</p>
+            </div>
         </section>
 
         <!-- Updates -->
@@ -329,6 +349,32 @@
         <div class="modal-actions">
             <button class="btn btn-ghost" data-close>Cancel</button>
             <button class="btn btn-primary" id="lic-save">Save license</button>
+        </div>
+    </div>
+</div>
+
+<!-- Catalog listing modal -->
+<div id="catalog-modal" class="modal hidden">
+    <div class="modal-card">
+        <h2 id="catalog-modal-title">New listing</h2>
+        <div id="catalog-modal-error" class="alert hidden"></div>
+        <div class="grid2">
+            <div><label>Product</label><select id="cat-product"></select></div>
+            <div><label>Slug</label><input id="cat-slug" placeholder="trezise-insurance"></div>
+        </div>
+        <div class="grid2">
+            <div><label>Category</label><select id="cat-category"></select></div>
+            <div><label>Price <small style="color:var(--muted)">(blank = no price)</small></label><input type="number" id="cat-price" min="0" step="0.01" placeholder="49.00"></div>
+        </div>
+        <label>Thumbnail URL</label><input id="cat-thumb" placeholder="https://…/thumb.png">
+        <label>Screenshot URLs <small style="color:var(--muted)">(comma-separated)</small></label><input id="cat-screens" placeholder="https://…/1.png, https://…/2.png">
+        <label>Excerpt</label><input id="cat-excerpt" placeholder="One-line card teaser">
+        <label>Description</label><textarea id="cat-body" rows="3" spellcheck="false"></textarea>
+        <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="cat-free" style="width:auto"> Free — expose <code>api_key</code> in the detail response (install without purchase)</label>
+        <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="cat-published" style="width:auto"> Published — visible in <code>/api/catalog</code></label>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" data-close>Cancel</button>
+            <button class="btn btn-primary" id="cat-save">Save listing</button>
         </div>
     </div>
 </div>

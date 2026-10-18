@@ -60,6 +60,10 @@ final class AdminApi
             $resource === 'updates' && $method === 'GET' && ! $id => $this->listUpdates(),
             $resource === 'updates' && $method === 'POST' && ! $id => $this->createUpdate(),
             $resource === 'updates' && $method === 'DELETE' && $id => $this->deleteUpdate((int) $id),
+            $resource === 'catalog' && $method === 'GET' => $this->listCatalog(),
+            $resource === 'catalog' && $method === 'POST' && ! $id => $this->createCatalogItem(),
+            $resource === 'catalog' && $method === 'PUT' && $id => $this->updateCatalogItem((int) $id),
+            $resource === 'catalog' && $method === 'DELETE' && $id => $this->deleteCatalogItem((int) $id),
             $resource === 'activations' && $method === 'GET' && ! $id => $this->listActivations(),
             $resource === 'activations' && $method === 'PUT' && $id => $this->updateActivation((int) $id),
             $resource === 'activations' && $method === 'DELETE' && $id => $this->deleteActivation((int) $id),
@@ -986,6 +990,91 @@ final class AdminApi
                 ->execute([trim((string) $b['name']), $adminId]);
         }
 
+        $this->json(['ok' => true]);
+    }
+
+    /* ── marketplace catalog ── */
+
+    private const CATALOG_CATEGORIES = ['business', 'church', 'school', 'athletics', 'gov', 'dental', 'law', 'portfolio', 'generic'];
+
+    private function listCatalog(): void
+    {
+        $rows = $this->db->query(
+            'SELECT c.*, p.name AS product_name, p.product_id AS product_ref, p.latest_version
+             FROM catalog_items c JOIN products p ON p.id = c.product_id
+             ORDER BY c.published DESC, p.name'
+        )->fetchAll();
+        $this->json(['data' => $rows, 'categories' => self::CATALOG_CATEGORIES]);
+    }
+
+    /** Shared validation → normalized field map, or exits with a 4xx. */
+    private function catalogPayload(): array
+    {
+        $b = $this->body();
+        $slug = strtolower(trim((string) ($b['slug'] ?? '')));
+        if (! preg_match('/^[a-z0-9][a-z0-9-]{0,118}[a-z0-9]$/', $slug)) {
+            $this->json(['error' => 'Slug must be lowercase letters, digits and dashes (e.g. trezise-insurance).'], 422);
+        }
+        $category = trim((string) ($b['category'] ?? 'generic'));
+        if (! in_array($category, self::CATALOG_CATEGORIES, true)) {
+            $this->json(['error' => 'Unknown category.'], 422);
+        }
+        $productId = (int) ($b['product_id'] ?? 0);
+        $p = $this->db->prepare('SELECT id FROM products WHERE id = ?');
+        $p->execute([$productId]);
+        if (! $p->fetch()) {
+            $this->json(['error' => 'Pick a product to list.'], 422);
+        }
+        $screens = $b['screenshots'] ?? [];
+        if (is_string($screens)) { // comma-separated URLs from the form
+            $screens = array_values(array_filter(array_map('trim', explode(',', $screens))));
+        }
+        if (! is_array($screens)) {
+            $screens = [];
+        }
+        $price = ($b['price'] === '' || $b['price'] === null) ? null : (float) $b['price'];
+        return [$productId, $slug, $category, $price, $screens,
+            trim((string) ($b['excerpt'] ?? '')), trim((string) ($b['body'] ?? '')),
+            trim((string) ($b['thumb'] ?? '')), ! empty($b['is_free']), ! empty($b['published'])];
+    }
+
+    private function createCatalogItem(): void
+    {
+        [$pid, $slug, $cat, $price, $screens, $ex, $body, $thumb, $free, $pub] = $this->catalogPayload();
+        try {
+            $this->db->prepare(
+                'INSERT INTO catalog_items (product_id, slug, category, excerpt, body, thumb, screenshots, price, is_free, published)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            )->execute([$pid, $slug, $cat, $ex ?: null, $body ?: null, $thumb ?: null,
+                $screens ? json_encode($screens) : null, $price, (int) $free, (int) $pub]);
+        } catch (PDOException) {
+            $this->json(['error' => 'That slug is already taken.'], 409);
+        }
+        Database::log($this->db, 'admin_catalog', null, null, $_SERVER['REMOTE_ADDR'] ?? null, 'created listing ' . $slug, true);
+        $this->json(['data' => ['id' => $this->db->lastInsertId()]], 201);
+    }
+
+    private function updateCatalogItem(int $id): void
+    {
+        [$pid, $slug, $cat, $price, $screens, $ex, $body, $thumb, $free, $pub] = $this->catalogPayload();
+        try {
+            $this->db->prepare(
+                'UPDATE catalog_items SET product_id = ?, slug = ?, category = ?, excerpt = ?, body = ?,
+                 thumb = ?, screenshots = ?, price = ?, is_free = ?, published = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?'
+            )->execute([$pid, $slug, $cat, $ex ?: null, $body ?: null, $thumb ?: null,
+                $screens ? json_encode($screens) : null, $price, (int) $free, (int) $pub, $id]);
+        } catch (PDOException) {
+            $this->json(['error' => 'That slug is already taken.'], 409);
+        }
+        Database::log($this->db, 'admin_catalog', null, null, $_SERVER['REMOTE_ADDR'] ?? null, 'updated listing ' . $slug, true);
+        $this->json(['ok' => true]);
+    }
+
+    private function deleteCatalogItem(int $id): void
+    {
+        $this->db->prepare('DELETE FROM catalog_items WHERE id = ?')->execute([$id]);
+        Database::log($this->db, 'admin_catalog', null, null, $_SERVER['REMOTE_ADDR'] ?? null, 'deleted listing #' . $id, true);
         $this->json(['ok' => true]);
     }
 

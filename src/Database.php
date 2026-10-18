@@ -161,6 +161,22 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS catalog_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id  INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    slug        VARCHAR(120) NOT NULL UNIQUE,    -- URL-safe marketplace slug
+    category    VARCHAR(40) NOT NULL DEFAULT 'generic',
+    excerpt     TEXT DEFAULT NULL,               -- card teaser
+    body        TEXT DEFAULT NULL,               -- detail-page copy
+    thumb       TEXT DEFAULT NULL,               -- card image URL
+    screenshots TEXT DEFAULT NULL,               -- JSON array of image URLs
+    price       REAL DEFAULT NULL,               -- NULL + is_free → free install
+    is_free     INTEGER NOT NULL DEFAULT 0,      -- 1 = api_key exposed in detail (install w/o purchase)
+    published   INTEGER NOT NULL DEFAULT 0,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS log_rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     action      VARCHAR(64) NOT NULL,            -- activity_logs.action or '*' catch-all

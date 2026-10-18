@@ -130,6 +130,23 @@ The bootstrap doc — sites hardcode only the base URL + api_key and
 learn everything else here. Client-side, `api_base` is honored only for
 HTTPS `*.ez-it-solutions.com` hosts (`ezit_allowed_api_hosts` filter).
 
+### `catalog`
+Marketplace listing — the one endpoint that does **not** need an
+`LB-API-KEY`. Soft-gated on `LB-URL` (missing → 400).
+**In:** — **Out:** `{status, items:[{slug, name, product_id, category,
+excerpt, thumb, version, price, free, installed}]}`
+Only `published` items on `enabled` products are listed; `installed`
+is true when the calling domain has an activation for that product.
+`version` mirrors `products.latest_version` (same source `check_update`
+reads — no double bookkeeping).
+
+### `catalog/{slug}`
+Detail for the install flow. Same `LB-URL` soft gate; 404 when
+unpublished/unknown. Adds `body` + `screenshots[]` to the item shape.
+**`api_key` is included only for `free` listings** — the site needs it
+to activate after installing; paid items must be purchased (Phase 5),
+then activated with an issued `license_code` like usual.
+
 ---
 
 ## 3. Server → site — `license-push`
@@ -178,6 +195,9 @@ All other calls need `X-CSRF-TOKEN`. Throttled 8 fails/IP/10min.
 | `config` | GET/POST | current doc + history / publish new version |
 | `config/{id}` | GET | one historical version |
 | `maintenance` | GET/PUT | read / toggle the `data/.maintenance` flag — while set, `/api/*` answers 503 `SERVER_UNAVAILABLE` instantly; admin panel stays up |
+| `settings` | GET/PUT | dashboard display prefs — `timezone` (IANA or '' = server default), `date_format` mdy/dmy/ymd, `time_format` 24h/12h |
+| `catalog` | GET/POST | marketplace listings + category list / create `{product_id, slug, category, excerpt?, body?, thumb?, screenshots[], price?, is_free, published}` |
+| `catalog/{id}` | PUT/DELETE | update / remove a listing (product row untouched) |
 
 ---
 

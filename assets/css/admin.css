@@ -359,9 +359,14 @@ th.sortable.sort-desc::after { content: '\2193'; opacity: 1; color: var(--green)
 .badge-ok { background: var(--badge-ok-bg); color: var(--green); }
 .badge-enabled { background: var(--badge-ok-bg); color: var(--green); }
 .badge-disabled { background: var(--badge-bad-bg); color: var(--danger); }
+.badge-free, .badge-published { background: var(--badge-ok-bg); color: var(--green); }
+.badge-paid { background: var(--row-hover); color: var(--muted); }
+.badge-draft { background: var(--badge-warn-bg); color: var(--warn); }
 [data-theme="light"] .badge-active,
 [data-theme="light"] .badge-ok,
-[data-theme="light"] .badge-enabled { color: var(--green-dark); }
+[data-theme="light"] .badge-enabled,
+[data-theme="light"] .badge-free,
+[data-theme="light"] .badge-published { color: var(--green-dark); }
 
 .mini-table { margin: .8rem 0 1.2rem; }
 .mini-table th { text-align: left; }

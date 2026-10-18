@@ -44,6 +44,8 @@ final class LicenseApi
             $path === 'deactivate_license' => $this->deactivateLicense(),
             $path === 'check_update' => $this->checkUpdate(),
             $path === 'get_config' => $this->getConfig(),
+            $path === 'catalog' => $this->catalogList(),
+            preg_match('#^catalog/([A-Za-z0-9_-]+)$#', $path, $m) === 1 => $this->catalogItem($m[1]),
             preg_match('#^get_update_size/(.+)$#', $path, $m) === 1 => $this->getUpdateSize($m[1]),
             preg_match('#^download_update/main/(.+)$#', $path, $m) === 1 => $this->downloadUpdate($m[1]),
             default => $this->json(['status' => false, 'message' => 'Unknown endpoint.'], 404),
@@ -422,6 +424,90 @@ final class LicenseApi
         readfile($update['file_path']);
         exit;
     }
+
+    /* ── marketplace catalog — no api_key required; soft-gated on LB-URL ── */
+
+    private function catalogList(): void
+    {
+        if (! $this->siteUrl()) {
+            $this->json(['status' => false, 'message' => 'Missing LB-URL header.'], 400);
+        }
+        $domain = $this->clientDomain();
+        $this->log('catalog', null, true, 'catalog list', $domain);
+
+        // Which products does the calling site already have activated?
+        $stmt = $this->db->prepare(
+            'SELECT DISTINCT l.product_id
+             FROM activations a JOIN licenses l ON l.id = a.license_id
+             WHERE a.domain = ?'
+        );
+        $stmt->execute([$domain]);
+        $installed = array_fill_keys(array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN)), true);
+
+        $rows = $this->db->query(
+            'SELECT c.slug, c.category, c.excerpt, c.thumb, c.price, c.is_free,
+                    p.id AS product_ref, p.product_id, p.name, p.latest_version AS version
+             FROM catalog_items c JOIN products p ON p.id = c.product_id
+             WHERE c.published = 1 AND p.status = \'enabled\'
+             ORDER BY c.category, p.name'
+        )->fetchAll();
+
+        $this->json([
+            'status' => true,
+            'items'  => array_map(fn (array $r) => [
+                'slug'       => $r['slug'],
+                'name'       => $r['name'],
+                'product_id' => $r['product_id'],
+                'category'   => $r['category'],
+                'excerpt'    => $r['excerpt'],
+                'thumb'      => $r['thumb'],
+                'version'    => $r['version'],
+                'price'      => $r['price'] !== null ? (float) $r['price'] : null,
+                'free'       => (bool) $r['is_free'],
+                'installed'  => isset($installed[(int) $r['product_ref']]),
+            ], $rows),
+        ]);
+    }
+
+    private function catalogItem(string $slug): void
+    {
+        if (! $this->siteUrl()) {
+            $this->json(['status' => false, 'message' => 'Missing LB-URL header.'], 400);
+        }
+        $stmt = $this->db->prepare(
+            'SELECT c.*, p.product_id, p.name, p.latest_version AS version, p.api_key
+             FROM catalog_items c JOIN products p ON p.id = c.product_id
+             WHERE c.slug = ? AND c.published = 1 AND p.status = \'enabled\''
+        );
+        $stmt->execute([$slug]);
+        $r = $stmt->fetch();
+        if (! $r) {
+            $this->json(['status' => false, 'message' => 'Catalog item not found.'], 404);
+        }
+        $this->log('catalog', null, true, 'catalog detail: ' . $slug, $this->clientDomain());
+
+        $item = [
+            'slug'        => $r['slug'],
+            'name'        => $r['name'],
+            'product_id'  => $r['product_id'],
+            'category'    => $r['category'],
+            'excerpt'     => $r['excerpt'],
+            'body'        => $r['body'],
+            'thumb'       => $r['thumb'],
+            'screenshots' => json_decode((string) ($r['screenshots'] ?? ''), true) ?: [],
+            'version'     => $r['version'],
+            'price'       => $r['price'] !== null ? (float) $r['price'] : null,
+            'free'        => (bool) $r['is_free'],
+        ];
+        // Installable without a purchase → hand over the api_key the site's
+        // core.json needs to activate it. Paid items never expose it here.
+        if ((int) $r['is_free'] === 1) {
+            $item['api_key'] = $r['api_key'];
+        }
+        $this->json(['status' => true, 'item' => $item]);
+    }
+
+    /* ──
 
     /* ─────────────────────────── helpers ─────────────────────────── */
 

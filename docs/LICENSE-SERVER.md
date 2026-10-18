@@ -29,8 +29,8 @@ same commit as any API change). Interactive copy with a try-it console:
 | `get_config` bootstrap doc | ✅ live | Versioned JSON (api_base/endpoints/services/notices) + per-product merge; `config_version` also rides on `check_update`; admin publish + history UI live |
 | `license-push` server → site | ✅ live | `LicensePush` fans out to `activations.site_url` on license update/delete, activation enable/disable/revoke, product update, and Mode-B revoke; logged as `push` |
 | `check_update` | ✅ live | Admin → Updates panel publishes zip packages (`/admin-api/updates`, multipart) into `data/updates/`; serves `get_update_size`/`download_update`; bumps `products.latest_version` |
-| Cert payload | ✅ live | Emits base fields + `max_activations`, `used_activations`, `features[]` (from new `licenses.features` JSON column; editable via admin API `features` field — SPA field TODO) |
-| Marketplace catalog | ⬜ not started | No catalog schema, no `/api/catalog*` |
+| Cert payload | ✅ live | Emits base fields + `max_activations`, `used_activations`, `features[]` (from `licenses.features` JSON column; editable in the license modal — comma-separated, sent as an array) |
+| Marketplace catalog | ✅ live | `catalog_items` (product + slug/category/excerpt/body/thumb/screenshots/price/is_free/published); `GET /api/catalog` + `/api/catalog/{slug}` (soft-gated on LB-URL; `api_key` exposed only on free items; `installed` flag per calling domain); admin CRUD under Products → Catalog tab |
 | Announcements | ⬜ not started | Banners module waits on this feed |
 | Support tickets | ⬜ not started | |
 | Payments (Invoice Ninja webhook) | ⬜ not started | billing.ez-it-solutions.com |
@@ -233,8 +233,8 @@ re-points itself on next check.
   flow; foundation for theme/plugin auto-updates.
 - ~~[P0] Enrich cert payload~~ — done: `Certificate::issue($extra)`
   merges `max_activations`/`used_activations`/`features[]`.
-  Remaining: features field in the licenses SPA form (API already
-  accepts it; only re-issued certs pick up changes).
+  Features field is live in the license modal (comma-separated →
+  JSON array; only re-issued certs pick up changes).
 - ~~[P1] Rate limiting~~ — done (activity_logs-backed per-IP failure
   throttles on `activate_license`, `access_login`, admin `login`).
 - ~~[P1] Log retention~~ — done: `src/LogRetention.php` + `log_rules`
