@@ -596,6 +596,7 @@
     const tzInput = $('#set-tz-filter');
     const tzHidden = $('#set-timezone');
     const tzList = $('#tz-list');
+    const tzCombo = $('#tz-combo');
     const tzDefaultLabel = () => 'Server default (' + SERVER_TZ + ')';
 
     function tzRender(filter = '') {
@@ -606,8 +607,23 @@
             `<div class="combo-item${it.v === tzHidden.value ? ' active' : ''}" data-v="${esc(it.v)}" role="option">${esc(it.label)}</div>`).join('')
             || '<div class="combo-empty">No matching timezone</div>';
         tzList.classList.remove('hidden');
+        tzCombo.classList.add('open');
     }
-    const tzClose = () => tzList.classList.add('hidden');
+    const tzClose = () => {
+        tzList.classList.add('hidden');
+        tzCombo.classList.remove('open');
+    };
+
+    // Chevron toggles the list like a native select.
+    tzCombo.querySelector('.combo-caret').addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        if (tzList.classList.contains('hidden')) {
+            tzInput.focus();
+            tzRender('');
+        } else {
+            tzClose();
+        }
+    });
 
     function tzPick(v, label) {
         tzHidden.value = v;
@@ -646,7 +662,7 @@
         }
         if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
         e.preventDefault();
-        if (tzList.classList.contains('hidden')) { tzRender(tzInput.value); return; }
+        if (tzList.classList.contains('hidden')) { tzRender(''); return; }
         let i = items.findIndex((el) => el.classList.contains('sel'));
         i = e.key === 'ArrowDown' ? Math.min(items.length - 1, i + 1) : Math.max(0, i - 1);
         items.forEach((el) => el.classList.remove('sel'));

@@ -264,6 +264,7 @@
                 <label>Timezone</label>
                 <div class="combo" id="tz-combo">
                     <input id="set-tz-filter" placeholder="Type to search — e.g. &quot;chicago&quot; or &quot;america&quot;" autocomplete="off" spellcheck="false">
+                    <span class="combo-caret" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
                     <input type="hidden" id="set-timezone">
                     <div class="combo-list hidden" id="tz-list" role="listbox"></div>
                 </div>

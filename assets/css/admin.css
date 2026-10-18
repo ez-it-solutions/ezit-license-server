@@ -287,6 +287,13 @@ select.input-sm { width: auto; }
 
 /* Searchable combobox (timezone picker, Select2-style). */
 .combo { position: relative; }
+.combo input { padding-right: 2rem; }
+.combo-caret {
+    position: absolute; right: .6rem; top: 0; bottom: 0;
+    display: flex; align-items: center; color: var(--muted);
+    cursor: pointer; transition: transform .15s;
+}
+.combo.open .combo-caret { transform: rotate(180deg); color: var(--text); }
 .combo-list {
     position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60;
     max-height: 260px; overflow-y: auto;
