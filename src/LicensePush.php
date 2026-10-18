@@ -61,6 +61,22 @@ final class LicensePush
         }
     }
 
+    /** Queue every known activated site — for global events like
+     *  maintenance mode, where every site must re-verify now. */
+    public static function broadcast(PDO $db, string $reason): void
+    {
+        $stmt = $db->query(
+            'SELECT DISTINCT a.site_url, p.api_key, a.license_id
+             FROM activations a
+             JOIN licenses l ON l.id = a.license_id
+             JOIN products p ON p.id = l.product_id
+             WHERE a.site_url IS NOT NULL AND a.site_url != \'\''
+        );
+        foreach ($stmt->fetchAll() as $t) {
+            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => (int) $t['license_id'], 'reason' => $reason];
+        }
+    }
+
     /** Queue a single activation's site (enable/disable/revoke). */
     public static function activation(PDO $db, int $activationId, string $reason): void
     {

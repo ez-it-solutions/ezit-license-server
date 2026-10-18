@@ -909,6 +909,11 @@ final class AdminApi
 
         Database::log($this->db, 'admin_maintenance', null, null, $_SERVER['REMOTE_ADDR'] ?? null, $on ? 'maintenance ON' : 'maintenance OFF', true);
 
+        // Global event — wake every activated site now so they hit the
+        // API immediately (503 under maintenance) instead of waiting
+        // for their hourly cron. Runs post-response via json().
+        LicensePush::broadcast($this->db, 'maintenance ' . ($on ? 'ON' : 'OFF'));
+
         $this->json(['ok' => true, 'maintenance' => $on]);
     }
 
