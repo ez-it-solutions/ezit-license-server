@@ -407,8 +407,18 @@ final class LicenseApi
 
         if (! $license || $this->assertUsable($license) !== null
             || ! $this->findActivation($license['id'], $this->clientDomain())) {
-            http_response_code(401);
-            $this->json(['status' => false, 'message' => 'Active license required.'], 401);
+            // Marketplace installs: a product published as is_free can be
+            // fetched with just its api_key (authenticate() already proved
+            // possession) plus a declared LB-URL — the site licenses itself
+            // normally only after install.
+            $free = $this->db->prepare(
+                'SELECT 1 FROM catalog_items WHERE product_id = ? AND published = 1 AND is_free = 1'
+            );
+            $free->execute([$product['id']]);
+            if (! $free->fetchColumn() || ! $this->siteUrl()) {
+                $this->json(['status' => false, 'message' => 'Active license required.'], 401);
+            }
+            $license = null;
         }
 
         $update = $this->findUpdate($product['id'], $updateId);
@@ -416,7 +426,8 @@ final class LicenseApi
             $this->json(['status' => false, 'message' => 'Update package not found.'], 404);
         }
 
-        $this->log('download', $license['id'], true, 'update ' . $update['version'], $this->clientDomain());
+        $this->log('download', $license ? (int) $license['id'] : null, true,
+            'update ' . $update['version'] . ($license ? '' : ' (free catalog install)'), $this->clientDomain());
 
         header('Content-Type: application/zip');
         header('Content-Length: ' . filesize($update['file_path']));
