@@ -60,9 +60,13 @@
         </div>
         <div class="sidebar-cred">Ez IT License Manager · © 2026</div>
     </aside>
+    <div id="nav-scrim" class="scrim hidden"></div>
 
     <main class="main">
         <header class="topbar">
+            <button id="nav-toggle" class="top-icon nav-toggle" type="button" title="Menu" aria-label="Toggle navigation" aria-expanded="false">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+            </button>
             <div class="top-status"><span id="top-status" class="status-pill status-muted" title="Public API state"><span class="status-dot"></span>Checking…</span></div>
             <div class="top-actions">
                 <button id="theme-toggle" class="top-icon" type="button" title="Toggle theme" aria-label="Toggle theme"></button>

@@ -199,6 +199,15 @@
         location.reload();
     });
 
+    /* ── mobile nav drawer ── */
+    const navOpen = (on) => {
+        $('#app').classList.toggle('nav-open', on);
+        $('#nav-scrim').classList.toggle('hidden', !on);
+        $('#nav-toggle').setAttribute('aria-expanded', String(on));
+    };
+    $('#nav-toggle').addEventListener('click', () => navOpen(!$('#app').classList.contains('nav-open')));
+    $('#nav-scrim').addEventListener('click', () => navOpen(false));
+
     /* ── navigation ── */
     $$('.nav-link').forEach((a) => a.addEventListener('click', () => navigate(a.dataset.nav)));
 
@@ -290,6 +299,7 @@
         $$('.view').forEach((v) => v.classList.add('hidden'));
         $('#view-' + r.view).classList.remove('hidden');
         currentView = r.view;
+        navOpen(false);
         VIEWS[r.view]();
         if (r.tab) openTab(r.tab);
     }
@@ -1304,7 +1314,7 @@
         });
     });
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') $$('.modal').forEach((m) => m.classList.add('hidden'));
+        if (e.key === 'Escape') { $$('.modal').forEach((m) => m.classList.add('hidden')); navOpen(false); }
     });
 
     init();

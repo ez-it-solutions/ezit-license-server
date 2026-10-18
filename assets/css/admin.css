@@ -411,13 +411,21 @@ th.sortable.sort-desc::after { content: '\2193'; opacity: 1; color: var(--green)
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
+/* ── Mobile drawer — same sidebar slides in over a scrim ── */
+.nav-toggle { display: none; }
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(2px); z-index: 75; }
+
 @media (max-width: 860px) {
     .app { grid-template-columns: 1fr; }
-    .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
-    .sidebar nav { display: flex; flex-wrap: wrap; gap: .2rem; }
+    .nav-toggle { display: grid; }
+    .sidebar {
+        position: fixed; top: 0; left: 0; bottom: 0; z-index: 80;
+        width: min(280px, 82vw); height: 100vh; height: 100dvh;
+        transform: translateX(-105%); transition: transform .22s ease;
+    }
+    .app.nav-open .sidebar { transform: none; box-shadow: 18px 0 50px rgba(0,0,0,.5); }
     .main { padding: 1.2rem; }
-    .topbar { position: static; height: auto; margin: -1.2rem -1.2rem 1.2rem; padding: .7rem 1.2rem; }
-    .sidebar-cred { width: 100%; }
+    .topbar { margin: -1.2rem -1.2rem 1.2rem; padding: 0 1.2rem; gap: .7rem; }
     .grid2, .grid3 { grid-template-columns: 1fr; }
     .input-sm { width: 100%; }
     .pane-actions .input-sm, .head-search { width: 100%; }
