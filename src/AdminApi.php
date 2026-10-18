@@ -993,7 +993,7 @@ final class AdminApi
         echo $body;
         session_write_close(); // release the session lock before post-response work
         self::closeConnection();
-        LicensePush::flush($this->db); // queued pushes run post-response
+        LicensePush::flush($this->db, (int) ($this->config['push_max_sites'] ?? 0) ?: null);
         exit;
     }
 

@@ -640,7 +640,7 @@ final class LicenseApi
             }
             flush();
         }
-        LicensePush::flush($this->db); // queued pushes run post-response
+        LicensePush::flush($this->db, (int) ($this->config['push_max_sites'] ?? 0) ?: null);
         exit;
     }
 }

@@ -22,7 +22,8 @@ final class LicensePush
 {
     private const ENDPOINT = '/wp-json/ezit/v1/license-push';
     private const TIMEOUT  = 5; // seconds per site
-    private const MAX_SITE = 25; // per flush — fan-out stays bounded
+    /** Default per-flush cap — override via config['push_max_sites']. */
+    private const MAX_SITE = 25;
 
     /** @var array<int, array{site:string, key:string, license_id:?int, reason:string}> */
     private static array $queue = [];
@@ -99,14 +100,19 @@ final class LicensePush
      * Send queued pushes. Call AFTER the HTTP response has been
      * flushed (see json() in AdminApi/LicenseApi) so request latency
      * never depends on client-site reachability.
+     *
+     * $maxSites bounds the per-flush fan-out (each send can take up to
+     * TIMEOUT seconds). Null falls back to MAX_SITE; pass
+     * config['push_max_sites'] to raise it as the fleet grows.
      */
-    public static function flush(PDO $db): void
+    public static function flush(PDO $db, ?int $maxSites = null): void
     {
+        $max  = $maxSites !== null && $maxSites > 0 ? $maxSites : self::MAX_SITE;
         $seen = [];
 
         foreach (self::$queue as $t) {
             $site = rtrim((string) $t['site'], '/');
-            if ($site === '' || isset($seen[$site]) || count($seen) >= self::MAX_SITE) {
+            if ($site === '' || isset($seen[$site]) || count($seen) >= $max) {
                 continue;
             }
             $seen[$site] = true;

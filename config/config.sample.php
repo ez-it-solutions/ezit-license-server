@@ -45,6 +45,11 @@ return [
     // integer; clients clamp to 5 min – 1 h on their side (floor: 30 s here).
     // 'maintenance_retry_after' => 300,
 
+    // Max sites pushed per request when licenses/activations/maintenance
+    // change. Each push can take up to 5s; raise this as the fleet grows
+    // (sites beyond the cap still converge on their hourly cron).
+    // 'push_max_sites' => 25,
+
     // Session cookie name
     'session_name' => 'ezitls',
 
