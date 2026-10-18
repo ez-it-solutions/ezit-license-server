@@ -578,14 +578,86 @@
     }
 
     const FALLBACK_TZ = ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Tokyo', 'Australia/Sydney'];
+    // US zones pin to the top of the list — they're the common case.
+    const TZ_PINNED = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles', 'America/Anchorage', 'America/Adak'];
+    let TZ_ZONES = null;
+
+    function tzOrdered() {
+        if (!TZ_ZONES) {
+            TZ_ZONES = typeof Intl.supportedValuesOf === 'function'
+                ? Intl.supportedValuesOf('timeZone')
+                : FALLBACK_TZ;
+        }
+        const pinned = TZ_PINNED.filter((z) => TZ_ZONES.includes(z));
+        return [...pinned, ...TZ_ZONES.filter((z) => !pinned.includes(z))];
+    }
+
+    /* ── timezone combobox (Select2-style, dependency-free) ── */
+    const tzInput = $('#set-tz-filter');
+    const tzHidden = $('#set-timezone');
+    const tzList = $('#tz-list');
+    const tzDefaultLabel = () => 'Server default (' + SERVER_TZ + ')';
+
+    function tzRender(filter = '') {
+        const f = filter.trim().toLowerCase();
+        const items = [{ v: '', label: tzDefaultLabel() }]
+            .concat(tzOrdered().filter((z) => !f || z.toLowerCase().includes(f)).map((z) => ({ v: z, label: z })));
+        tzList.innerHTML = items.slice(0, 80).map((it) =>
+            `<div class="combo-item${it.v === tzHidden.value ? ' active' : ''}" data-v="${esc(it.v)}" role="option">${esc(it.label)}</div>`).join('')
+            || '<div class="combo-empty">No matching timezone</div>';
+        tzList.classList.remove('hidden');
+    }
+    const tzClose = () => tzList.classList.add('hidden');
+
+    function tzPick(v, label) {
+        tzHidden.value = v;
+        tzInput.value = label;
+        tzClose();
+        updateSettingsPreview();
+    }
+
+    tzInput.addEventListener('focus', () => { tzInput.select(); tzRender(tzInput.value === tzHidden.value || tzInput.value === tzDefaultLabel() ? '' : tzInput.value); });
+    tzInput.addEventListener('input', () => tzRender(tzInput.value));
+    tzInput.addEventListener('blur', () => {
+        // Tabbed away — accept an exact typed match, else restore the label.
+        const v = tzHidden.value;
+        if (tzInput.value === v || (v === '' && tzInput.value === tzDefaultLabel())) return;
+        const hit = tzZonesMatch(tzInput.value);
+        if (hit) { tzPick(hit, hit); return; }
+        tzInput.value = v || tzDefaultLabel();
+    });
+    const tzZonesMatch = (s) => tzOrdered().find((z) => z.toLowerCase() === s.trim().toLowerCase()) || null;
+
+    tzList.addEventListener('mousedown', (e) => { // mousedown beats input blur
+        const it = e.target.closest('.combo-item');
+        if (!it) return;
+        e.preventDefault();
+        tzPick(it.dataset.v, it.textContent);
+    });
+
+    tzInput.addEventListener('keydown', (e) => {
+        const items = $$('.combo-item', tzList);
+        if (e.key === 'Escape') { tzClose(); tzInput.value = tzHidden.value || tzDefaultLabel(); return; }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const sel = tzList.querySelector('.combo-item.sel') || items[0];
+            if (sel) tzPick(sel.dataset.v, sel.textContent);
+            return;
+        }
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+        e.preventDefault();
+        if (tzList.classList.contains('hidden')) { tzRender(tzInput.value); return; }
+        let i = items.findIndex((el) => el.classList.contains('sel'));
+        i = e.key === 'ArrowDown' ? Math.min(items.length - 1, i + 1) : Math.max(0, i - 1);
+        items.forEach((el) => el.classList.remove('sel'));
+        if (items[i]) { items[i].classList.add('sel'); items[i].scrollIntoView({ block: 'nearest' }); }
+    });
+    document.addEventListener('click', (e) => { if (!e.target.closest('#tz-combo')) tzClose(); });
 
     async function loadSettingsView() {
         await loadSettingsData();
-        const zones = typeof Intl.supportedValuesOf === 'function'
-            ? Intl.supportedValuesOf('timeZone')
-            : FALLBACK_TZ;
-        $('#set-timezone').innerHTML = `<option value="">Server default (${esc(SERVER_TZ)})</option>`
-            + zones.map((z) => `<option value="${esc(z)}"${z === SETTINGS.timezone ? ' selected' : ''}>${esc(z)}</option>`).join('');
+        tzHidden.value = SETTINGS.timezone;
+        tzInput.value = SETTINGS.timezone || tzDefaultLabel();
         $('#set-server-tz').textContent = SERVER_TZ;
         $('#set-datefmt').value = SETTINGS.date_format;
         $('#set-timefmt').value = SETTINGS.time_format;

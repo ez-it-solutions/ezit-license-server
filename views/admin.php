@@ -262,7 +262,11 @@
             <div class="panel form-panel">
                 <div id="settings-msg" class="alert hidden"></div>
                 <label>Timezone</label>
-                <select id="set-timezone"></select>
+                <div class="combo" id="tz-combo">
+                    <input id="set-tz-filter" placeholder="Type to search — e.g. &quot;chicago&quot; or &quot;america&quot;" autocomplete="off" spellcheck="false">
+                    <input type="hidden" id="set-timezone">
+                    <div class="combo-list hidden" id="tz-list" role="listbox"></div>
+                </div>
                 <p class="hint" style="margin-top:.35rem">Drives the Date/Time columns in the Activity Log and dashboard. <b>Server default</b> resolves to <code id="set-server-tz"></code>.</p>
                 <div class="grid2">
                     <div><label>Date format</label><select id="set-datefmt">

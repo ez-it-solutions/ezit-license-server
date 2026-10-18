@@ -285,6 +285,19 @@ select.input-sm { width: auto; }
 .pane-actions { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: .9rem; justify-content: flex-end; }
 .pane-actions .input-sm { width: 300px; }
 
+/* Searchable combobox (timezone picker, Select2-style). */
+.combo { position: relative; }
+.combo-list {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60;
+    max-height: 260px; overflow-y: auto;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 9px;
+    box-shadow: var(--card-shadow);
+}
+.combo-item { padding: .45rem .7rem; font-size: .88rem; color: var(--text); cursor: pointer; }
+.combo-item:hover, .combo-item.sel { background: var(--row-hover); }
+.combo-item.active { color: var(--green); font-weight: 600; }
+.combo-empty { padding: .6rem .7rem; color: var(--muted); font-size: .85rem; }
+
 /* Dashboard Recent Activity rows deep-link into the Activity Log. */
 #recent-table tbody tr[data-log] { cursor: pointer; }
 #recent-table tbody tr[data-log]:hover { background: var(--row-hover); }
