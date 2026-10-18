@@ -10,6 +10,13 @@
     let licenses = [];
     let logPage = 1;
     let logRows = [];
+    let currentView = 'dashboard';
+    let pendingLogFocus = 0;
+
+    /* Dashboard display settings — loaded from GET admin-api/settings.
+     * timezone: '' means "server default" (server_tz). */
+    let SETTINGS = { timezone: '', date_format: 'mdy', time_format: '24h' };
+    let SERVER_TZ = 'UTC';
 
     /* ── fetch helper ── */
     async function api(path, opts = {}) {
@@ -38,13 +45,29 @@
         if (s < 60) return 'just now';
         if (s < 3600) return Math.floor(s / 60) + 'm ago';
         if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-        return d.toLocaleDateString();
+        return fmtDate(ts);
     };
-    // Absolute timestamp: "10/16/2026 14:32:07" — full date AND time.
-    const dt = (ts) => {
-        if (!ts) return '—';
-        const d = new Date(ts.replace(' ', 'T') + 'Z');
-        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString(undefined, { hour12: false });
+    /* Timestamps arrive as UTC "Y-m-d H:i:s" — parse as such, render in
+     * the configured timezone / formats (Settings page). */
+    const DATE_LOCALE = { mdy: 'en-US', dmy: 'en-GB', ymd: 'en-CA' };
+    const tsToDate = (ts) => (ts ? new Date(String(ts).replace(' ', 'T') + 'Z') : null);
+    const fmtDate = (ts, s = SETTINGS) => {
+        const d = tsToDate(ts);
+        if (!d) return '—';
+        try {
+            return d.toLocaleDateString(DATE_LOCALE[s.date_format] || 'en-US', { timeZone: s.timezone || SERVER_TZ });
+        } catch { return d.toLocaleDateString(); }
+    };
+    const fmtTime = (ts, s = SETTINGS) => {
+        const d = tsToDate(ts);
+        if (!d) return '—';
+        try {
+            return d.toLocaleTimeString('en-US', {
+                timeZone: s.timezone || SERVER_TZ,
+                hour12: s.time_format === '12h',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+            });
+        } catch { return d.toLocaleTimeString(); }
     };
     const badge = (status) => `<span class="badge badge-${esc(status)}">${esc(status)}</span>`;
     const okBadge = (ok) => ok ? '<span class="badge badge-ok">ok</span>' : '<span class="badge badge-fail">fail</span>';
@@ -136,9 +159,10 @@
         $('#login-screen').classList.remove('hidden');
         $('#app').classList.add('hidden');
     }
-    function showApp() {
+    async function showApp() {
         $('#login-screen').classList.add('hidden');
         $('#app').classList.remove('hidden');
+        await loadSettingsData().catch(() => {}); // formatters need it before first render
         // Legacy #view URLs → clean paths
         if (location.hash.length > 1) {
             const legacy = location.hash.slice(1);
@@ -178,7 +202,7 @@
     /* ── navigation ── */
     $$('.nav-link').forEach((a) => a.addEventListener('click', () => navigate(a.dataset.nav)));
 
-    const VIEWS = { dashboard: loadDashboard, licenses: loadLicenses, products: loadProducts, updates: loadUpdates, logs: loadLogs, config: loadConfig, account: () => {} };
+    const VIEWS = { dashboard: loadDashboard, licenses: loadLicenses, products: loadProducts, updates: loadUpdates, logs: loadLogs, config: loadConfig, settings: loadSettingsView, account: () => {} };
 
     // URL slug → {view, tab}. 'config' stays routable for old links but
     // canonicalizes to 'server-config' — /config collides with the
@@ -194,10 +218,11 @@
         'logs':          { view: 'logs' },
         'config':        { view: 'config' },
         'server-config': { view: 'config' },
+        'settings':      { view: 'settings' },
         'account':       { view: 'account' },
     };
     // Canonical slug per view — what the address bar normalizes to.
-    const SLUG = { dashboard: '', licenses: 'licenses', products: 'products', updates: 'updates', logs: 'logs', config: 'server-config', account: 'account' };
+    const SLUG = { dashboard: '', licenses: 'licenses', products: 'products', updates: 'updates', logs: 'logs', config: 'server-config', settings: 'settings', account: 'account' };
 
     function openTab(tabId) {
         const pane = $('#tab-' + tabId);
@@ -264,6 +289,7 @@
         $$('.nav-link').forEach((a) => a.classList.toggle('active', a.dataset.nav === r.view));
         $$('.view').forEach((v) => v.classList.add('hidden'));
         $('#view-' + r.view).classList.remove('hidden');
+        currentView = r.view;
         VIEWS[r.view]();
         if (r.tab) openTab(r.tab);
     }
@@ -286,9 +312,21 @@
         ].map(([n, l, go]) => `<a class="stat stat-link" data-go="${go}"><div class="num">${n}</div><div class="lbl">${l}</div></a>`).join('');
 
         $('#recent-table tbody').innerHTML = s.recent_activity.length
-            ? s.recent_activity.map((r) => `<tr><td>${esc(r.action)}</td><td class="mono">${esc(r.domain || r.ip || r.detail || '—')}</td><td>${okBadge(!!r.success)}</td><td data-sort="${esc(r.created_at)}">${ago(r.created_at)}</td></tr>`).join('')
-            : '<tr><td colspan="4" class="empty">No activity yet</td></tr>';
+            ? s.recent_activity.map((r) => `<tr data-log="${r.id}" title="Open in Activity Log"><td>${esc(r.action)}</td><td class="mono">${esc(r.domain || r.ip || r.detail || '—')}</td><td>${okBadge(!!r.success)}</td><td class="mono" data-sort="${esc(r.created_at)}">${fmtDate(r.created_at)}</td><td class="mono" title="${ago(r.created_at)}">${fmtTime(r.created_at)}</td></tr>`).join('')
+            : '<tr><td colspan="5" class="empty">No activity yet</td></tr>';
     }
+
+    // Dashboard row → jump straight to that event in the Activity Log.
+    $('#recent-table tbody').addEventListener('click', (e) => {
+        const tr = e.target.closest('tr[data-log]');
+        if (!tr) return;
+        pendingLogFocus = +tr.dataset.log;
+        // Clear filters so the focused event can't be filtered out.
+        $('#logs-q').value = '';
+        $('#logs-action').value = '';
+        $('#logs-result').value = '';
+        navigate('logs');
+    });
 
     /* ── licenses ── */
     async function loadLicenses() {
@@ -527,6 +565,65 @@
             loadConfig();
         } catch (err) {
             msg.textContent = err.message;
+            msg.classList.remove('hidden');
+        }
+    });
+
+    /* ── settings ── */
+    async function loadSettingsData() {
+        const r = await api('settings');
+        SETTINGS = r.settings;
+        SERVER_TZ = r.server_tz || 'UTC';
+        return r;
+    }
+
+    const FALLBACK_TZ = ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Tokyo', 'Australia/Sydney'];
+
+    async function loadSettingsView() {
+        await loadSettingsData();
+        const zones = typeof Intl.supportedValuesOf === 'function'
+            ? Intl.supportedValuesOf('timeZone')
+            : FALLBACK_TZ;
+        $('#set-timezone').innerHTML = `<option value="">Server default (${esc(SERVER_TZ)})</option>`
+            + zones.map((z) => `<option value="${esc(z)}"${z === SETTINGS.timezone ? ' selected' : ''}>${esc(z)}</option>`).join('');
+        $('#set-server-tz').textContent = SERVER_TZ;
+        $('#set-datefmt').value = SETTINGS.date_format;
+        $('#set-timefmt').value = SETTINGS.time_format;
+        updateSettingsPreview();
+    }
+
+    function updateSettingsPreview() {
+        const s = {
+            timezone: $('#set-timezone').value,
+            date_format: $('#set-datefmt').value,
+            time_format: $('#set-timefmt').value,
+        };
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' '); // UTC, our ts shape
+        $('#set-preview').textContent = fmtDate(now, s) + '  ' + fmtTime(now, s) + '  ·  ' + (s.timezone || SERVER_TZ);
+    }
+    ['set-timezone', 'set-datefmt', 'set-timefmt'].forEach((id) => {
+        $('#' + id).addEventListener('change', updateSettingsPreview);
+    });
+
+    $('#settings-save').addEventListener('click', async () => {
+        const msg = $('#settings-msg');
+        msg.classList.add('hidden');
+        try {
+            const r = await api('settings', {
+                method: 'PUT',
+                body: {
+                    timezone: $('#set-timezone').value,
+                    date_format: $('#set-datefmt').value,
+                    time_format: $('#set-timefmt').value,
+                },
+            });
+            SETTINGS = r.settings;
+            SERVER_TZ = r.server_tz || SERVER_TZ;
+            toast('Settings saved');
+            if (VIEWS[currentView]) VIEWS[currentView](); // re-render with new formats
+        } catch (e) {
+            msg.textContent = e.message;
+            msg.className = 'alert';
             msg.classList.remove('hidden');
         }
     });
@@ -814,6 +911,7 @@
 
     function logQuery() {
         const p = new URLSearchParams({ page: logPage, per: $('#logs-per').value });
+        if (pendingLogFocus) p.set('focus', pendingLogFocus);
         const q = $('#logs-q').value.trim();
         if (q) p.set('q', q);
         if ($('#logs-action').value) p.set('action', $('#logs-action').value);
@@ -826,15 +924,26 @@
             const r = await api('logs?' + logQuery());
             logPage = r.page;
             logRows = r.data;
-            $('#logs-table tbody').innerHTML = r.data.map((l, i) => `<tr data-i="${i}">
-                <td class="mono" data-sort="${esc(l.created_at)}" title="${ago(l.created_at)}">${dt(l.created_at)}</td>
+            $('#logs-table tbody').innerHTML = r.data.map((l, i) => `<tr data-i="${i}" data-id="${l.id}">
+                <td class="mono" data-sort="${esc(l.created_at)}">${fmtDate(l.created_at)}</td>
+                <td class="mono" data-sort="${esc(l.created_at)}" title="${ago(l.created_at)}">${fmtTime(l.created_at)}</td>
                 <td>${esc(l.action)}</td>
                 <td class="mono">${esc(l.license_code || '—')}</td>
                 <td class="mono">${esc(l.domain || '—')}</td>
                 <td class="mono">${esc(l.ip || '—')}</td>
                 <td>${okBadge(!!l.success)}</td>
                 <td>${esc(l.detail || '')}</td></tr>`).join('')
-                || '<tr><td colspan="7" class="empty">No activity matches these filters.</td></tr>';
+                || '<tr><td colspan="8" class="empty">No activity matches these filters.</td></tr>';
+
+            // Dashboard deep-link: flash + scroll to the focused event.
+            if (r.focused) {
+                pendingLogFocus = 0;
+                const tr = $(`#logs-table tbody tr[data-id="${r.focused}"]`);
+                if (tr) {
+                    tr.classList.add('row-focus');
+                    tr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                }
+            }
 
             $('#logs-info').textContent = r.total
                 ? `${r.total.toLocaleString()} entr${r.total === 1 ? 'y' : 'ies'}`

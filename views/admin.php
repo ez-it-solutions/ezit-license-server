@@ -48,6 +48,7 @@
             <a data-nav="updates" class="nav-link"><span class="nav-ico">⇧</span> Updates</a>
             <a data-nav="logs" class="nav-link"><span class="nav-ico">≡</span> Activity Log</a>
             <a data-nav="config" class="nav-link"><span class="nav-ico">⚙</span> Server Config</a>
+            <a data-nav="settings" class="nav-link"><span class="nav-ico">❖</span> Settings</a>
             <a data-nav="account" class="nav-link"><span class="nav-ico">◐</span> Account</a>
         </nav>
         <div class="sidebar-foot">
@@ -94,7 +95,7 @@
             <h1>Dashboard</h1>
             <div class="stat-grid" id="stat-grid"></div>
             <h2>Recent activity</h2>
-            <div class="panel"><table id="recent-table"><thead><tr><th>Action</th><th>Domain</th><th>Result</th><th>When</th></tr></thead><tbody></tbody></table></div>
+            <div class="panel"><table id="recent-table"><thead><tr><th>Action</th><th>Domain</th><th>Result</th><th>Date</th><th>Time</th></tr></thead><tbody></tbody></table></div>
         </section>
 
         <!-- Licenses (activations live in the second tab) -->
@@ -192,7 +193,7 @@
                     <div class="pager-btns" id="logs-pager-top"></div>
                 </div>
                 <div class="panel"><table id="logs-table">
-                    <thead><tr><th>Time</th><th>Action</th><th>License</th><th>Domain</th><th>IP</th><th>Result</th><th>Detail</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Time</th><th>Action</th><th>License</th><th>Domain</th><th>IP</th><th>Result</th><th>Detail</th></tr></thead>
                     <tbody></tbody>
                 </table></div>
                 <div class="pager">
@@ -251,6 +252,32 @@
                     <thead><tr><th>Version</th><th>Note</th><th>Published</th><th></th></tr></thead>
                     <tbody></tbody>
                 </table></div>
+            </div>
+        </section>
+
+        <!-- Settings -->
+        <section id="view-settings" class="view hidden">
+            <h1>Settings</h1>
+            <p class="hint">Dashboard display preferences — stored server-side, so they apply to every admin on any device.</p>
+            <div class="panel form-panel">
+                <div id="settings-msg" class="alert hidden"></div>
+                <label>Timezone</label>
+                <select id="set-timezone"></select>
+                <p class="hint" style="margin-top:.35rem">Drives the Date/Time columns in the Activity Log and dashboard. <b>Server default</b> resolves to <code id="set-server-tz"></code>.</p>
+                <div class="grid2">
+                    <div><label>Date format</label><select id="set-datefmt">
+                        <option value="mdy">MM/DD/YYYY — 10/17/2026</option>
+                        <option value="dmy">DD/MM/YYYY — 17/10/2026</option>
+                        <option value="ymd">YYYY-MM-DD — 2026-10-17</option>
+                    </select></div>
+                    <div><label>Time format</label><select id="set-timefmt">
+                        <option value="24h">24-hour — 19:54:49</option>
+                        <option value="12h">12-hour — 7:54:49 PM</option>
+                    </select></div>
+                </div>
+                <label>Preview</label>
+                <p id="set-preview" class="mono" style="margin:.2rem 0 .5rem"></p>
+                <button class="btn btn-primary" id="settings-save">Save settings</button>
             </div>
         </section>
 

@@ -75,6 +75,8 @@ final class AdminApi
             $resource === 'account' && $method === 'PUT' => $this->updateAccount(),
             $path === 'maintenance' && $method === 'GET' => $this->getMaintenance(),
             $path === 'maintenance' && $method === 'PUT' => $this->setMaintenance(),
+            $path === 'settings' && $method === 'GET' => $this->getSettings(),
+            $path === 'settings' && $method === 'PUT' => $this->updateSettings(),
             default => $this->json(['error' => 'Not found'], 404),
         };
     }
@@ -917,6 +919,56 @@ final class AdminApi
         $this->json(['ok' => true, 'maintenance' => $on]);
     }
 
+    /* ─────────────────────────── dashboard settings ─────────────────────────── */
+
+    private const DATE_FORMATS = ['mdy', 'dmy', 'ymd'];
+    private const TIME_FORMATS = ['24h', '12h'];
+
+    private function getSettings(): void
+    {
+        $rows = $this->db->query('SELECT name, value FROM settings')
+            ->fetchAll(PDO::FETCH_KEY_PAIR);
+
+        $this->json([
+            'settings' => [
+                'timezone'    => (string) ($rows['timezone'] ?? ''), // '' = server default
+                'date_format' => (string) ($rows['date_format'] ?? 'mdy'),
+                'time_format' => (string) ($rows['time_format'] ?? '24h'),
+            ],
+            // PHP/ server zone — what "Server default" resolves to.
+            'server_tz' => date_default_timezone_get(),
+        ]);
+    }
+
+    private function updateSettings(): void
+    {
+        $b = $this->body();
+
+        $tz = trim((string) ($b['timezone'] ?? ''));
+        if ($tz !== '' && ! in_array($tz, \DateTimeZone::listIdentifiers(), true)) {
+            $this->json(['error' => 'Unknown timezone: ' . $tz], 422);
+        }
+        $df = (string) ($b['date_format'] ?? 'mdy');
+        if (! in_array($df, self::DATE_FORMATS, true)) {
+            $this->json(['error' => 'Invalid date_format'], 422);
+        }
+        $tf = (string) ($b['time_format'] ?? '24h');
+        if (! in_array($tf, self::TIME_FORMATS, true)) {
+            $this->json(['error' => 'Invalid time_format'], 422);
+        }
+
+        $stmt = $this->db->prepare(
+            'REPLACE INTO settings (name, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)'
+        );
+        $stmt->execute(['timezone', $tz]);
+        $stmt->execute(['date_format', $df]);
+        $stmt->execute(['time_format', $tf]);
+
+        Database::log($this->db, 'admin_settings', null, null, $_SERVER['REMOTE_ADDR'] ?? null, 'display settings updated', true);
+
+        $this->getSettings(); // respond with the fresh values
+    }
+
     private function updateAccount(): void
     {
         $b = $this->body();
@@ -1010,4 +1062,18 @@ final class AdminApi
         }
         flush();
     }
+}
+    private static function closeConnection(): void
+    {
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+            return;
+        }
+        ignore_user_abort(true);
+        while (ob_get_level() > 0) {
+            @ob_end_flush();
+        }
+        flush();
+    }
+}
 }

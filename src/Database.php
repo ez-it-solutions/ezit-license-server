@@ -155,6 +155,12 @@ CREATE TABLE IF NOT EXISTS server_configs (
     published_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+    name       VARCHAR(64) PRIMARY KEY,
+    value      TEXT DEFAULT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS log_rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     action      VARCHAR(64) NOT NULL,            -- activity_logs.action or '*' catch-all

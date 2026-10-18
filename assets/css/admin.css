@@ -284,6 +284,16 @@ select.input-sm { width: auto; }
 .pager .btn:disabled { opacity: .4; cursor: default; }
 .pane-actions { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: .9rem; justify-content: flex-end; }
 .pane-actions .input-sm { width: 300px; }
+
+/* Dashboard Recent Activity rows deep-link into the Activity Log. */
+#recent-table tbody tr[data-log] { cursor: pointer; }
+#recent-table tbody tr[data-log]:hover { background: var(--row-hover); }
+/* The log row a dashboard click lands on flashes green, then fades. */
+#logs-table tbody tr.row-focus td { animation: rowflash 2.4s ease-out; }
+@keyframes rowflash {
+    0%   { background: rgba(118,185,0,.3); }
+    100% { background: transparent; }
+}
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 .9rem; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 .9rem; }
 .input-btn { display: flex; gap: .4rem; }
