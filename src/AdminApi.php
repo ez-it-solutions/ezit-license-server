@@ -1063,17 +1063,3 @@ final class AdminApi
         flush();
     }
 }
-    private static function closeConnection(): void
-    {
-        if (function_exists('fastcgi_finish_request')) {
-            fastcgi_finish_request();
-            return;
-        }
-        ignore_user_abort(true);
-        while (ob_get_level() > 0) {
-            @ob_end_flush();
-        }
-        flush();
-    }
-}
-}
