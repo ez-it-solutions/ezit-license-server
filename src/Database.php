@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS catalog_items (
     price       REAL DEFAULT NULL,               -- NULL + is_free → free install
     is_free     INTEGER NOT NULL DEFAULT 0,      -- 1 = api_key exposed in detail (install w/o purchase)
     published   INTEGER NOT NULL DEFAULT 0,
+    license_scope TEXT DEFAULT NULL,             -- NULL = public; JSON array of license codes = only those licensees see/install it
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -209,6 +210,14 @@ SQL);
         // marketplace card — added after the table first shipped)
         try {
             $pdo->exec("ALTER TABLE catalog_items ADD COLUMN type VARCHAR(20) NOT NULL DEFAULT 'product'");
+        } catch (PDOException) {
+            // column already exists
+        }
+
+        // catalog_items.license_scope — restrict a listing to sites whose
+        // domain activated one of the listed license codes.
+        try {
+            $pdo->exec("ALTER TABLE catalog_items ADD COLUMN license_scope TEXT DEFAULT NULL");
         } catch (PDOException) {
             // column already exists
         }

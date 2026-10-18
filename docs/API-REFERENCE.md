@@ -140,10 +140,14 @@ Only `published` items on `enabled` products are listed; `installed`
 is true when the calling domain has an activation for that product.
 `version` mirrors `products.latest_version` (same source `check_update`
 reads — no double bookkeeping).
+Listings with a `license_scope` (JSON array of license codes) are hidden
+from sites that don't hold an **enabled activation** under one of those
+codes on an **active** license — scoped rows are simply absent, and the
+detail endpoint answers 404 so restricted items don't leak.
 
 ### `catalog/{slug}`
 Detail for the install flow. Same `LB-URL` soft gate; 404 when
-unpublished/unknown. Adds `body` + `screenshots[]` to the item shape.
+unpublished/unknown or license-scoped to codes the caller doesn't hold. Adds `body` + `screenshots[]` to the item shape.
 **`api_key` is included only for `free` listings** — the site needs it
 to activate after installing; paid items must be purchased (Phase 5),
 then activated with an issued `license_code` like usual.
@@ -199,6 +203,11 @@ All other calls need `X-CSRF-TOKEN`. Throttled 8 fails/IP/10min.
 | `settings` | GET/PUT | dashboard display prefs — `timezone` (IANA or '' = server default), `date_format` mdy/dmy/ymd, `time_format` 24h/12h |
 | `catalog` | GET/POST | marketplace listings + category list / create `{product_id, slug, category, excerpt?, body?, thumb?, screenshots[], price?, is_free, published}` |
 | `catalog/{id}` | PUT/DELETE | update / remove a listing (product row untouched) |
+| `catalog-upload` | POST | listing image upload — **multipart**, field `image` (jpg/png/webp ≤5 MB) → `{data:{url}}` stored under `uploads/catalog/`; paste the URL into `thumb`/`screenshots` or mix with external URLs |
+
+`catalog` create/update also accepts `license_scope`: an array (or comma
+string) of license codes restricting the listing to sites activated under
+one of them; empty = public.
 
 ---
 

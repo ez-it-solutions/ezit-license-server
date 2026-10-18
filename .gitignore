@@ -5,6 +5,10 @@ config/config.php
 data/*
 !data/.gitkeep
 
+# user uploads (catalog images, update zips) — keep the .htaccess guard
+uploads/*
+!uploads/.htaccess
+
 # OS / editor cruft
 Thumbs.db
 Desktop.ini

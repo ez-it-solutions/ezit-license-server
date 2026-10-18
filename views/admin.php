@@ -139,11 +139,12 @@
             <div class="view-head"><h1>Products</h1>
                 <div class="head-actions">
                     <button class="btn btn-primary" id="new-product-btn">+ New product</button>
+                    <button class="btn btn-primary hidden" id="new-catalog-btn" data-tab-show="catalog-list">+ New listing</button>
                 </div>
             </div>
             <div class="tabs">
                 <button class="tab active" data-tab="products-list" type="button">Products</button>
-                <button class="tab" data-tab="catalog-list" type="button">Catalog</button>
+                <button class="tab" data-tab="catalog-list" type="button">Marketplace</button>
             </div>
             <div id="tab-products-list" class="tab-pane">
                 <div class="panel"><table id="products-table">
@@ -153,14 +154,11 @@
                 <p class="hint">Copy <code>api_key</code> into each site's <code>platform/core/core.json</code> as <code>"apiKey"</code>, and set <code>"apiUrl"</code> to this server's URL.</p>
             </div>
             <div id="tab-catalog-list" class="tab-pane hidden">
-                <div class="pane-actions">
-                    <button class="btn btn-primary" id="new-catalog-btn">+ New listing</button>
-                </div>
                 <div class="panel"><table id="catalog-table">
                     <thead><tr><th>Name</th><th>Slug</th><th>Type</th><th>Category</th><th>Version</th><th>Price</th><th>Free</th><th>Published</th><th></th></tr></thead>
                     <tbody></tbody>
                 </table></div>
-                <p class="hint">Published listings feed <code>GET /api/catalog</code> and <code>/api/catalog/{slug}</code> for the marketplace in Ez IT Core. <b>Free</b> listings expose the product's <code>api_key</code> in the detail response so sites can install without a purchase.</p>
+                <p class="hint">Published listings feed <code>GET /api/catalog</code> and <code>/api/catalog/{slug}</code> — the Marketplace in Ez IT Core. <b>Free</b> listings expose the product's <code>api_key</code> in the detail response so sites can install without a purchase.</p>
             </div>
         </section>
 
@@ -367,15 +365,44 @@
             <div><label>Category</label><select id="cat-category"></select></div>
             <div><label>Price <small style="color:var(--muted)">(blank = no price)</small></label><input type="number" id="cat-price" min="0" step="0.01" placeholder="49.00"></div>
         </div>
-        <label>Thumbnail URL</label><input id="cat-thumb" placeholder="https://…/thumb.png">
-        <label>Screenshot URLs <small style="color:var(--muted)">(comma-separated)</small></label><input id="cat-screens" placeholder="https://…/1.png, https://…/2.png">
+        <label>Thumbnail <small style="color:var(--muted)">(URL or upload — upload fills the URL)</small></label>
+        <div class="uprow">
+            <input id="cat-thumb" placeholder="https://…/thumb.png">
+            <input type="file" id="cat-thumb-file" accept=".jpg,.jpeg,.png,.webp" class="file-ghost">
+            <button type="button" class="btn btn-ghost" data-upload="cat-thumb-file">Upload…</button>
+        </div>
+        <label>Screenshots <small style="color:var(--muted)">(comma-separated URLs — uploads append)</small></label>
+        <div class="uprow">
+            <input id="cat-screens" placeholder="https://…/1.png, https://…/2.png">
+            <input type="file" id="cat-screens-file" accept=".jpg,.jpeg,.png,.webp" multiple class="file-ghost">
+            <button type="button" class="btn btn-ghost" data-upload="cat-screens-file">Upload…</button>
+        </div>
         <label>Excerpt</label><input id="cat-excerpt" placeholder="One-line card teaser">
         <label>Description</label><textarea id="cat-body" rows="3" spellcheck="false"></textarea>
+        <label>Restrict to licensees <small style="color:var(--muted)">(empty = public — every site sees it)</small></label>
+        <div class="uprow">
+            <div id="cat-scope-chips" class="scope-chips"><span class="hint" style="align-self:center">Public — no restrictions</span></div>
+            <button type="button" class="btn btn-ghost" id="cat-scope-open">Select licenses…</button>
+        </div>
         <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="cat-free" style="width:auto"> Free — expose <code>api_key</code> in the detail response (install without purchase)</label>
         <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="cat-published" style="width:auto"> Published — visible in <code>/api/catalog</code></label>
         <div class="modal-actions">
             <button class="btn btn-ghost" data-close>Cancel</button>
             <button class="btn btn-primary" id="cat-save">Save listing</button>
+        </div>
+    </div>
+</div>
+
+<!-- License-scope picker — stacks above the catalog modal (z 80). -->
+<div id="scope-modal" class="modal hidden" style="z-index:80">
+    <div class="modal-card">
+        <h2>Restrict listing to licensees</h2>
+        <p class="hint">Only sites activated under a selected license see this item — everyone else gets the public catalog without it.</p>
+        <input id="scope-search" placeholder="Search code or client…">
+        <div id="scope-list" class="scope-list"></div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" id="scope-cancel" type="button">Cancel</button>
+            <button class="btn btn-primary" id="scope-apply" type="button">Apply</button>
         </div>
     </div>
 </div>

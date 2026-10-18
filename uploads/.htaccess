@@ -1,0 +1,8 @@
+# Uploaded catalog media — never executable, images only.
+php_flag engine off
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8
+RemoveType .php .phtml
+
+<FilesMatch "(?i)\.(php|phtml|phar|cgi|pl|py|asp|aspx|sh|shtml)$">
+    Require all denied
+</FilesMatch>

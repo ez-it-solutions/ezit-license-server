@@ -60,6 +60,7 @@ final class AdminApi
             $resource === 'updates' && $method === 'GET' && ! $id => $this->listUpdates(),
             $resource === 'updates' && $method === 'POST' && ! $id => $this->createUpdate(),
             $resource === 'updates' && $method === 'DELETE' && $id => $this->deleteUpdate((int) $id),
+            $path === 'catalog-upload' && $method === 'POST' => $this->catalogUpload(),
             $resource === 'catalog' && $method === 'GET' => $this->listCatalog(),
             $resource === 'catalog' && $method === 'POST' && ! $id => $this->createCatalogItem(),
             $resource === 'catalog' && $method === 'PUT' && $id => $this->updateCatalogItem((int) $id),
@@ -1005,7 +1006,12 @@ final class AdminApi
              FROM catalog_items c JOIN products p ON p.id = c.product_id
              ORDER BY c.published DESC, p.name'
         )->fetchAll();
-        $this->json(['data' => $rows, 'categories' => self::CATALOG_CATEGORIES, 'types' => self::CATALOG_TYPES]);
+        // License picker for the scope field (restrict-to-licensees).
+        $licenses = $this->db->query(
+            'SELECT code, client_name FROM licenses ORDER BY client_name, code'
+        )->fetchAll();
+        $this->json(['data' => $rows, 'categories' => self::CATALOG_CATEGORIES,
+                     'types' => self::CATALOG_TYPES, 'licenses' => $licenses]);
     }
 
     /** Shared validation → normalized field map, or exits with a 4xx. */
@@ -1037,21 +1043,38 @@ final class AdminApi
         if (! is_array($screens)) {
             $screens = [];
         }
-        $price = ($b['price'] === '' || $b['price'] === null) ? null : (float) $b['price'];
+        $priceRaw = $b['price'] ?? null;
+        $price = ($priceRaw === '' || $priceRaw === null) ? null : (float) $priceRaw;
+
+        // License scope — restrict visibility to sites activated under one
+        // of these codes. Empty / absent = public listing.
+        $scope = $b['license_scope'] ?? [];
+        if (is_string($scope)) { // comma-separated codes from the form
+            $scope = array_values(array_filter(array_map('trim', explode(',', $scope))));
+        }
+        if (! is_array($scope)) {
+            $scope = [];
+        }
+        $scope = array_values(array_filter(array_map(
+            fn ($c) => preg_match('/^[A-Z0-9-]{4,64}$/i', (string) $c) ? strtoupper(trim((string) $c)) : null,
+            $scope
+        )));
+
         return [$productId, $slug, $type, $category, $price, $screens,
             trim((string) ($b['excerpt'] ?? '')), trim((string) ($b['body'] ?? '')),
-            trim((string) ($b['thumb'] ?? '')), ! empty($b['is_free']), ! empty($b['published'])];
+            trim((string) ($b['thumb'] ?? '')), ! empty($b['is_free']), ! empty($b['published']),
+            $scope ? json_encode($scope) : null];
     }
 
     private function createCatalogItem(): void
     {
-        [$pid, $slug, $type, $cat, $price, $screens, $ex, $body, $thumb, $free, $pub] = $this->catalogPayload();
+        [$pid, $slug, $type, $cat, $price, $screens, $ex, $body, $thumb, $free, $pub, $scope] = $this->catalogPayload();
         try {
             $this->db->prepare(
-                'INSERT INTO catalog_items (product_id, slug, type, category, excerpt, body, thumb, screenshots, price, is_free, published)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO catalog_items (product_id, slug, type, category, excerpt, body, thumb, screenshots, price, is_free, published, license_scope)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             )->execute([$pid, $slug, $type, $cat, $ex ?: null, $body ?: null, $thumb ?: null,
-                $screens ? json_encode($screens) : null, $price, (int) $free, (int) $pub]);
+                $screens ? json_encode($screens) : null, $price, (int) $free, (int) $pub, $scope]);
         } catch (PDOException) {
             $this->json(['error' => 'That slug is already taken.'], 409);
         }
@@ -1061,19 +1084,66 @@ final class AdminApi
 
     private function updateCatalogItem(int $id): void
     {
-        [$pid, $slug, $type, $cat, $price, $screens, $ex, $body, $thumb, $free, $pub] = $this->catalogPayload();
+        [$pid, $slug, $type, $cat, $price, $screens, $ex, $body, $thumb, $free, $pub, $scope] = $this->catalogPayload();
         try {
             $this->db->prepare(
                 'UPDATE catalog_items SET product_id = ?, slug = ?, type = ?, category = ?, excerpt = ?, body = ?,
-                 thumb = ?, screenshots = ?, price = ?, is_free = ?, published = ?, updated_at = CURRENT_TIMESTAMP
+                 thumb = ?, screenshots = ?, price = ?, is_free = ?, published = ?, license_scope = ?, updated_at = CURRENT_TIMESTAMP
                  WHERE id = ?'
             )->execute([$pid, $slug, $type, $cat, $ex ?: null, $body ?: null, $thumb ?: null,
-                $screens ? json_encode($screens) : null, $price, (int) $free, (int) $pub, $id]);
+                $screens ? json_encode($screens) : null, $price, (int) $free, (int) $pub, $scope, $id]);
         } catch (PDOException) {
             $this->json(['error' => 'That slug is already taken.'], 409);
         }
         Database::log($this->db, 'admin_catalog', null, null, $_SERVER['REMOTE_ADDR'] ?? null, 'updated listing ' . $slug, true);
         $this->json(['ok' => true]);
+    }
+
+    /**
+     * Catalog image upload — thumbs/screenshots for listings. Multipart:
+     * `image` field, jpg/png/webp ≤ 5 MB. Stored under /uploads/catalog/
+     * (publicly servable, PHP disabled by uploads/.htaccess); returns the
+     * absolute URL the admin then pastes into thumb/screenshots fields.
+     */
+    private function catalogUpload(): void
+    {
+        $file = $_FILES['image'] ?? null;
+        if (! is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK
+            || ! is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
+            $this->json(['error' => 'An image upload is required.'], 422);
+        }
+        $size = (int) filesize((string) $file['tmp_name']);
+        if ($size <= 0 || $size > 5 * 1024 * 1024) {
+            $this->json(['error' => 'Image must be a real file up to 5 MB.'], 422);
+        }
+        $ext = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+        if (! in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+            $this->json(['error' => 'Only .jpg, .png and .webp images are allowed.'], 422);
+        }
+        // Belts and braces — sniff the MIME rather than trusting the name.
+        $mime = mime_content_type((string) $file['tmp_name']);
+        if (! in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            $this->json(['error' => 'File content is not a valid image.'], 422);
+        }
+
+        $dir = dirname(__DIR__) . '/uploads/catalog';
+        if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+            $this->json(['error' => 'Image storage is not writable.'], 500);
+        }
+        $fname = 'cat-' . bin2hex(random_bytes(8)) . '.' . $ext;
+        if (! move_uploaded_file((string) $file['tmp_name'], $dir . '/' . $fname)) {
+            $this->json(['error' => 'Could not store the uploaded image.'], 500);
+        }
+
+        // Absolute URL — EzIT Core renders <img src> straight from the field.
+        $scheme = (! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $base   = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
+        $url    = $scheme . '://' . $host . $base . '/uploads/catalog/' . $fname;
+
+        Database::log($this->db, 'admin_catalog', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
+            'uploaded catalog image ' . $fname, true);
+        $this->json(['data' => ['url' => $url]], 201);
     }
 
     private function deleteCatalogItem(int $id): void

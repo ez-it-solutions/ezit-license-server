@@ -454,14 +454,19 @@ final class LicenseApi
         );
         $stmt->execute([$domain]);
         $installed = array_fill_keys(array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN)), true);
+        $held = $this->siteLicenseCodes($domain);
 
         $rows = $this->db->query(
-            'SELECT c.slug, c.type, c.category, c.excerpt, c.thumb, c.price, c.is_free,
+            'SELECT c.slug, c.type, c.category, c.excerpt, c.thumb, c.price, c.is_free, c.license_scope,
                     p.id AS product_ref, p.product_id, p.name, p.latest_version AS version
              FROM catalog_items c JOIN products p ON p.id = c.product_id
              WHERE c.published = 1 AND p.status = \'enabled\'
              ORDER BY c.category, p.name'
         )->fetchAll();
+
+        // Scoped listings appear only for sites activated under a listed code.
+        $rows = array_values(array_filter($rows, fn (array $r) =>
+            $this->catalogVisible($r['license_scope'] ?? null, $held)));
 
         $this->json([
             'status' => true,
@@ -493,7 +498,9 @@ final class LicenseApi
         );
         $stmt->execute([$slug]);
         $r = $stmt->fetch();
-        if (! $r) {
+        if (! $r || ! $this->catalogVisible($r['license_scope'] ?? null,
+                $this->siteLicenseCodes($this->clientDomain()))) {
+            // 404, not 403 — scoped items shouldn't leak their existence.
             $this->json(['status' => false, 'message' => 'Catalog item not found.'], 404);
         }
         $this->log('catalog', null, true, 'catalog detail: ' . $slug, $this->clientDomain());
@@ -606,6 +613,27 @@ final class LicenseApi
         }
 
         return null;
+    }
+
+    /** License codes the domain holds via an enabled activation + active license. */
+    private function siteLicenseCodes(string $domain): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT l.code FROM activations a JOIN licenses l ON l.id = a.license_id
+             WHERE a.domain = ? AND a.status = 'enabled' AND l.status = 'active'"
+        );
+        $stmt->execute([$domain]);
+        return array_fill_keys(array_map('strtoupper', $stmt->fetchAll(PDO::FETCH_COLUMN)), true);
+    }
+
+    /** NULL/empty scope = public; otherwise the site must hold a listed code. */
+    private function catalogVisible(?string $scopeJson, array $held): bool
+    {
+        $scope = json_decode((string) $scopeJson, true);
+        if (! is_array($scope) || ! $scope) {
+            return true;
+        }
+        return (bool) array_intersect(array_map('strtoupper', $scope), array_keys($held));
     }
 
     private function findUpdate(int $productId, string $updateId): ?array

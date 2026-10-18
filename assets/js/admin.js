@@ -31,6 +31,27 @@
         return data;
     }
 
+    /** Multipart POST with real upload progress (fetch can't report it). */
+    function postForm(path, fd, onprogress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/admin-api/' + path);
+            xhr.setRequestHeader('X-CSRF-TOKEN', csrf);
+            xhr.withCredentials = true;
+            xhr.upload.onprogress = (e) => {
+                if (onprogress) onprogress(e.lengthComputable ? e.loaded / e.total : null);
+            };
+            xhr.onload = () => {
+                let data = {};
+                try { data = JSON.parse(xhr.responseText || '{}'); } catch { /* non-JSON */ }
+                if (xhr.status >= 400) { reject(new Error(data.error || ('HTTP ' + xhr.status))); return; }
+                resolve(data);
+            };
+            xhr.onerror = () => reject(new Error('Network error during upload'));
+            xhr.send(fd);
+        });
+    }
+
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const toast = (msg) => {
         const t = $('#toast');
@@ -245,6 +266,14 @@
         view.querySelectorAll('.head-actions, .head-search').forEach((el) => {
             el.classList.toggle('hidden', tabId !== firstTab);
         });
+        // …unless a head button claims a non-primary tab (data-tab-show),
+        // e.g. Products → Marketplace keeps its "+ New listing" in the header.
+        view.querySelectorAll('.head-actions [data-tab-show]').forEach((el) => {
+            el.classList.toggle('hidden', el.dataset.tabShow !== tabId);
+            if (el.dataset.tabShow === tabId) {
+                el.closest('.head-actions').classList.remove('hidden');
+            }
+        });
         if (tabId === 'activations-list') loadActivations();
         if (tabId === 'catalog-list') loadCatalog();
     }
@@ -439,11 +468,12 @@
     $('#upd-file').addEventListener('change', (e) => {
         $('#upd-file-name').textContent = e.target.files[0]?.name || 'No file chosen';
     });
-
     $('#update-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = $('#upd-btn');
+        const setBtn = (html) => { btn.innerHTML = html; };
         btn.disabled = true;
+        setBtn('<span class="btn-spin"></span> Uploading…');
         const fd = new FormData();
         fd.append('product_id', $('#upd-product').value);
         fd.append('version', $('#upd-version').value.trim());
@@ -452,15 +482,12 @@
         if ($('#upd-hassql').checked) fd.append('has_sql', '1');
         fd.append('package', $('#upd-file').files[0]);
         try {
-            // Multipart — bypass the JSON api() helper but keep the CSRF header.
-            const res = await fetch('/admin-api/updates', {
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrf },
-                body: fd,
-                credentials: 'same-origin',
+            const data = await postForm('updates', fd, (pct) => {
+                setBtn(pct === null
+                    ? '<span class="btn-spin"></span> Uploading…'
+                    : `<span class="btn-spin"></span> Uploading… ${Math.round(pct * 100)}%`);
+                if (pct === 1) setBtn('<span class="btn-spin"></span> Publishing…');
             });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
             toast('Update ' + data.data.version + ' published');
             e.target.reset();
             loadUpdates();
@@ -468,6 +495,7 @@
             toast('Publish failed: ' + err.message);
         } finally {
             btn.disabled = false;
+            setBtn('Publish update');
         }
     });
 
@@ -1004,8 +1032,10 @@
         }
     });
 
-    /* ── marketplace catalog (Products → Catalog tab) ── */
+    /* ── marketplace catalog (Products → Marketplace tab) ── */
     let catalogItems = [];
+    let licenseOptions = [];
+    let catScope = [];
     let editingCatalog = null;
 
     async function loadCatalog() {
@@ -1014,7 +1044,8 @@
             catalogItems = r.data;
             $('#cat-category').innerHTML = r.categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
             $('#cat-type').innerHTML = r.types.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
-        } catch (e) { toast('Catalog load failed: ' + e.message); return; }
+            licenseOptions = r.licenses || [];
+        } catch (e) { toast('Marketplace load failed: ' + e.message); return; }
         $('#catalog-table tbody').innerHTML = catalogItems.length
             ? catalogItems.map((c) => `<tr>
                 <td>${esc(c.product_name)}</td>
@@ -1024,12 +1055,14 @@
                 <td class="mono">${esc(c.latest_version || '—')}</td>
                 <td>${c.price !== null ? '$' + Number(c.price).toFixed(2) : '—'}</td>
                 <td>${badge(c.is_free ? 'free' : 'paid')}</td>
-                <td>${badge(c.published ? 'published' : 'draft')}</td>
+                <td>${badge(c.published ? 'published' : 'draft')}
+                    ${(() => { try { const s = JSON.parse(c.license_scope || '[]');
+                        return s.length ? badge('scoped') : ''; } catch { return ''; } })()}</td>
                 <td><div class="row-actions">
                     <button class="btn" onclick="EZL.editCatalog(${c.id})">Edit</button>
                     <button class="btn btn-danger" onclick="EZL.deleteCatalog(${c.id})">Delete</button>
                 </div></td></tr>`).join('')
-            : '<tr><td colspan="9" class="hint" style="padding:1rem">No catalog listings yet.</td></tr>';
+            : '<tr><td colspan="9" class="hint" style="padding:1rem">No marketplace listings yet.</td></tr>';
     }
 
     function openCatalogModal(item) {
@@ -1048,8 +1081,89 @@
         $('#cat-body').value = (item && item.body) || '';
         $('#cat-free').checked = !!(item && +item.is_free);
         $('#cat-published').checked = !!(item && +item.published);
+        try { catScope = item && item.license_scope ? JSON.parse(item.license_scope) : []; }
+        catch { catScope = []; }
+        renderScopeChips();
+        $('#cat-thumb-file').value = ''; $('#cat-screens-file').value = '';
         $('#catalog-modal').classList.remove('hidden');
     }
+
+    /* ── license scope: chips in the modal + nested searchable picker ── */
+
+    function renderScopeChips() {
+        const box = $('#cat-scope-chips');
+        if (!catScope.length) {
+            box.innerHTML = '<span class="hint" style="align-self:center">Public — no restrictions</span>';
+            return;
+        }
+        box.innerHTML = catScope.map((code) => {
+            const l = licenseOptions.find((x) => x.code === code);
+            const label = l && l.client_name ? `${esc(code)} <small>· ${esc(l.client_name)}</small>` : esc(code);
+            return `<span class="scope-chip">${label}<button type="button" class="scope-x" data-code="${esc(code)}" title="Remove">&times;</button></span>`;
+        }).join('');
+    }
+
+    $('#cat-scope-chips').addEventListener('click', (e) => {
+        const x = e.target.closest('.scope-x');
+        if (!x) return;
+        catScope = catScope.filter((c) => c !== x.dataset.code);
+        renderScopeChips();
+    });
+
+    function renderScopeList(q) {
+        q = (q || '').toLowerCase();
+        $('#scope-list').innerHTML = licenseOptions.length
+            ? licenseOptions
+                .filter((l) => !q || (l.code + ' ' + (l.client_name || '')).toLowerCase().includes(q))
+                .map((l) => `<label class="scope-row">
+                    <input type="checkbox" value="${esc(l.code)}"${catScope.includes(l.code) ? ' checked' : ''}>
+                    <span class="mono">${esc(l.code)}</span><small>${esc(l.client_name || '')}</small>
+                </label>`).join('')
+            : '<div class="hint" style="padding:1rem">No licenses yet — create one under Licenses.</div>';
+    }
+
+    $('#cat-scope-open').addEventListener('click', () => {
+        $('#scope-search').value = '';
+        renderScopeList('');
+        $('#scope-modal').classList.remove('hidden');
+    });
+    $('#scope-search').addEventListener('input', (e) => renderScopeList(e.target.value));
+    $('#scope-cancel').addEventListener('click', () => $('#scope-modal').classList.add('hidden'));
+    $('#scope-apply').addEventListener('click', () => {
+        catScope = [...$('#scope-list').querySelectorAll('input:checked')].map((c) => c.value);
+        renderScopeChips();
+        $('#scope-modal').classList.add('hidden');
+    });
+
+    /* Ghost buttons trigger the hidden native pickers. */
+    $$('[data-upload]').forEach((b) => b.addEventListener('click', () => $('#' + b.dataset.upload).click()));
+
+    /** Upload one catalog image → public URL stored in the field. */
+    async function uploadCatImage(file) {
+        const fd = new FormData();
+        fd.append('image', file);
+        const data = await postForm('catalog-upload', fd, null);
+        return data.data.url;
+    }
+
+    $('#cat-thumb-file').addEventListener('change', async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        try { $('#cat-thumb').value = await uploadCatImage(f); toast('Thumbnail uploaded'); }
+        catch (err) { toast('Upload failed: ' + err.message); }
+    });
+
+    $('#cat-screens-file').addEventListener('change', async (e) => {
+        for (const f of e.target.files) {
+            try {
+                const url = await uploadCatImage(f);
+                const cur = $('#cat-screens').value.trim();
+                $('#cat-screens').value = cur ? cur + ', ' + url : url;
+            } catch (err) { toast('Upload failed (' + f.name + '): ' + err.message); }
+        }
+        toast('Screenshots uploaded');
+        e.target.value = '';
+    });
 
     $('#new-catalog-btn').addEventListener('click', () => openCatalogModal(null));
     window.EZL.editCatalog = (id) => openCatalogModal(catalogItems.find((c) => c.id === id));
@@ -1076,6 +1190,7 @@
             body:        $('#cat-body').value.trim(),
             is_free:     $('#cat-free').checked,
             published:   $('#cat-published').checked,
+            license_scope: catScope,
         };
         try {
             if (editingCatalog) {
