@@ -445,7 +445,7 @@ final class LicenseApi
         $installed = array_fill_keys(array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN)), true);
 
         $rows = $this->db->query(
-            'SELECT c.slug, c.category, c.excerpt, c.thumb, c.price, c.is_free,
+            'SELECT c.slug, c.type, c.category, c.excerpt, c.thumb, c.price, c.is_free,
                     p.id AS product_ref, p.product_id, p.name, p.latest_version AS version
              FROM catalog_items c JOIN products p ON p.id = c.product_id
              WHERE c.published = 1 AND p.status = \'enabled\'
@@ -458,6 +458,7 @@ final class LicenseApi
                 'slug'       => $r['slug'],
                 'name'       => $r['name'],
                 'product_id' => $r['product_id'],
+                'type'       => $r['type'],
                 'category'   => $r['category'],
                 'excerpt'    => $r['excerpt'],
                 'thumb'      => $r['thumb'],
@@ -490,6 +491,7 @@ final class LicenseApi
             'slug'        => $r['slug'],
             'name'        => $r['name'],
             'product_id'  => $r['product_id'],
+            'type'        => $r['type'],
             'category'    => $r['category'],
             'excerpt'     => $r['excerpt'],
             'body'        => $r['body'],

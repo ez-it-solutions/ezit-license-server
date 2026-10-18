@@ -1013,11 +1013,13 @@
             const r = await api('catalog');
             catalogItems = r.data;
             $('#cat-category').innerHTML = r.categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+            $('#cat-type').innerHTML = r.types.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
         } catch (e) { toast('Catalog load failed: ' + e.message); return; }
         $('#catalog-table tbody').innerHTML = catalogItems.length
             ? catalogItems.map((c) => `<tr>
                 <td>${esc(c.product_name)}</td>
                 <td class="mono">${esc(c.slug)}</td>
+                <td>${esc(c.type || 'product')}</td>
                 <td>${esc(c.category)}</td>
                 <td class="mono">${esc(c.latest_version || '—')}</td>
                 <td>${c.price !== null ? '$' + Number(c.price).toFixed(2) : '—'}</td>
@@ -1027,7 +1029,7 @@
                     <button class="btn" onclick="EZL.editCatalog(${c.id})">Edit</button>
                     <button class="btn btn-danger" onclick="EZL.deleteCatalog(${c.id})">Delete</button>
                 </div></td></tr>`).join('')
-            : '<tr><td colspan="8" class="hint" style="padding:1rem">No catalog listings yet.</td></tr>';
+            : '<tr><td colspan="9" class="hint" style="padding:1rem">No catalog listings yet.</td></tr>';
     }
 
     function openCatalogModal(item) {
@@ -1037,6 +1039,7 @@
         $('#cat-product').innerHTML = products.map((p) =>
             `<option value="${p.id}"${item && item.product_id === p.id ? ' selected' : ''}>${esc(p.name)} (${esc(p.product_id)})</option>`).join('');
         $('#cat-slug').value = item ? item.slug : '';
+        $('#cat-type').value = (item && item.type) || 'product';
         $('#cat-category').value = item ? item.category : 'generic';
         $('#cat-price').value = item && item.price !== null ? item.price : '';
         $('#cat-thumb').value = (item && item.thumb) || '';
@@ -1064,6 +1067,7 @@
         const payload = {
             product_id:  +$('#cat-product').value,
             slug:        $('#cat-slug').value.trim(),
+            type:        $('#cat-type').value,
             category:    $('#cat-category').value,
             price:       $('#cat-price').value,
             thumb:       $('#cat-thumb').value.trim(),

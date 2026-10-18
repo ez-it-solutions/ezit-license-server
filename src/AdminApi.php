@@ -996,6 +996,7 @@ final class AdminApi
     /* ── marketplace catalog ── */
 
     private const CATALOG_CATEGORIES = ['business', 'church', 'school', 'athletics', 'gov', 'dental', 'law', 'portfolio', 'generic'];
+    private const CATALOG_TYPES = ['theme', 'plugin', 'product'];
 
     private function listCatalog(): void
     {
@@ -1004,7 +1005,7 @@ final class AdminApi
              FROM catalog_items c JOIN products p ON p.id = c.product_id
              ORDER BY c.published DESC, p.name'
         )->fetchAll();
-        $this->json(['data' => $rows, 'categories' => self::CATALOG_CATEGORIES]);
+        $this->json(['data' => $rows, 'categories' => self::CATALOG_CATEGORIES, 'types' => self::CATALOG_TYPES]);
     }
 
     /** Shared validation → normalized field map, or exits with a 4xx. */
@@ -1018,6 +1019,10 @@ final class AdminApi
         $category = trim((string) ($b['category'] ?? 'generic'));
         if (! in_array($category, self::CATALOG_CATEGORIES, true)) {
             $this->json(['error' => 'Unknown category.'], 422);
+        }
+        $type = trim((string) ($b['type'] ?? 'product'));
+        if (! in_array($type, self::CATALOG_TYPES, true)) {
+            $this->json(['error' => 'Type must be theme, plugin or product.'], 422);
         }
         $productId = (int) ($b['product_id'] ?? 0);
         $p = $this->db->prepare('SELECT id FROM products WHERE id = ?');
@@ -1033,19 +1038,19 @@ final class AdminApi
             $screens = [];
         }
         $price = ($b['price'] === '' || $b['price'] === null) ? null : (float) $b['price'];
-        return [$productId, $slug, $category, $price, $screens,
+        return [$productId, $slug, $type, $category, $price, $screens,
             trim((string) ($b['excerpt'] ?? '')), trim((string) ($b['body'] ?? '')),
             trim((string) ($b['thumb'] ?? '')), ! empty($b['is_free']), ! empty($b['published'])];
     }
 
     private function createCatalogItem(): void
     {
-        [$pid, $slug, $cat, $price, $screens, $ex, $body, $thumb, $free, $pub] = $this->catalogPayload();
+        [$pid, $slug, $type, $cat, $price, $screens, $ex, $body, $thumb, $free, $pub] = $this->catalogPayload();
         try {
             $this->db->prepare(
-                'INSERT INTO catalog_items (product_id, slug, category, excerpt, body, thumb, screenshots, price, is_free, published)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-            )->execute([$pid, $slug, $cat, $ex ?: null, $body ?: null, $thumb ?: null,
+                'INSERT INTO catalog_items (product_id, slug, type, category, excerpt, body, thumb, screenshots, price, is_free, published)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            )->execute([$pid, $slug, $type, $cat, $ex ?: null, $body ?: null, $thumb ?: null,
                 $screens ? json_encode($screens) : null, $price, (int) $free, (int) $pub]);
         } catch (PDOException) {
             $this->json(['error' => 'That slug is already taken.'], 409);
@@ -1056,13 +1061,13 @@ final class AdminApi
 
     private function updateCatalogItem(int $id): void
     {
-        [$pid, $slug, $cat, $price, $screens, $ex, $body, $thumb, $free, $pub] = $this->catalogPayload();
+        [$pid, $slug, $type, $cat, $price, $screens, $ex, $body, $thumb, $free, $pub] = $this->catalogPayload();
         try {
             $this->db->prepare(
-                'UPDATE catalog_items SET product_id = ?, slug = ?, category = ?, excerpt = ?, body = ?,
+                'UPDATE catalog_items SET product_id = ?, slug = ?, type = ?, category = ?, excerpt = ?, body = ?,
                  thumb = ?, screenshots = ?, price = ?, is_free = ?, published = ?, updated_at = CURRENT_TIMESTAMP
                  WHERE id = ?'
-            )->execute([$pid, $slug, $cat, $ex ?: null, $body ?: null, $thumb ?: null,
+            )->execute([$pid, $slug, $type, $cat, $ex ?: null, $body ?: null, $thumb ?: null,
                 $screens ? json_encode($screens) : null, $price, (int) $free, (int) $pub, $id]);
         } catch (PDOException) {
             $this->json(['error' => 'That slug is already taken.'], 409);

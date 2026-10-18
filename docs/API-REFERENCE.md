@@ -133,8 +133,9 @@ HTTPS `*.ez-it-solutions.com` hosts (`ezit_allowed_api_hosts` filter).
 ### `catalog`
 Marketplace listing — the one endpoint that does **not** need an
 `LB-API-KEY`. Soft-gated on `LB-URL` (missing → 400).
-**In:** — **Out:** `{status, items:[{slug, name, product_id, category,
-excerpt, thumb, version, price, free, installed}]}`
+**In:** — **Out:** `{status, items:[{slug, name, product_id, type,
+category, excerpt, thumb, version, price, free, installed}]}` —
+`type` is `theme|plugin|product` (matches the client product manifest).
 Only `published` items on `enabled` products are listed; `installed`
 is true when the calling domain has an activation for that product.
 `version` mirrors `products.latest_version` (same source `check_update`

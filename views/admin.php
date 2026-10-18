@@ -157,7 +157,7 @@
                     <button class="btn btn-primary" id="new-catalog-btn">+ New listing</button>
                 </div>
                 <div class="panel"><table id="catalog-table">
-                    <thead><tr><th>Name</th><th>Slug</th><th>Category</th><th>Version</th><th>Price</th><th>Free</th><th>Published</th><th></th></tr></thead>
+                    <thead><tr><th>Name</th><th>Slug</th><th>Type</th><th>Category</th><th>Version</th><th>Price</th><th>Free</th><th>Published</th><th></th></tr></thead>
                     <tbody></tbody>
                 </table></div>
                 <p class="hint">Published listings feed <code>GET /api/catalog</code> and <code>/api/catalog/{slug}</code> for the marketplace in Ez IT Core. <b>Free</b> listings expose the product's <code>api_key</code> in the detail response so sites can install without a purchase.</p>
@@ -362,7 +362,8 @@
             <div><label>Product</label><select id="cat-product"></select></div>
             <div><label>Slug</label><input id="cat-slug" placeholder="trezise-insurance"></div>
         </div>
-        <div class="grid2">
+        <div class="grid3">
+            <div><label>Type</label><select id="cat-type"></select></div>
             <div><label>Category</label><select id="cat-category"></select></div>
             <div><label>Price <small style="color:var(--muted)">(blank = no price)</small></label><input type="number" id="cat-price" min="0" step="0.01" placeholder="49.00"></div>
         </div>

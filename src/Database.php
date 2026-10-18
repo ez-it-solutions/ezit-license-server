@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS catalog_items (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id  INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     slug        VARCHAR(120) NOT NULL UNIQUE,    -- URL-safe marketplace slug
+    type        VARCHAR(20) NOT NULL DEFAULT 'product', -- theme|plugin|product (manifest contract)
     category    VARCHAR(40) NOT NULL DEFAULT 'generic',
     excerpt     TEXT DEFAULT NULL,               -- card teaser
     body        TEXT DEFAULT NULL,               -- detail-page copy
@@ -200,6 +201,14 @@ SQL);
         // Same for activations.status
         try {
             $pdo->exec("ALTER TABLE activations ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'enabled'");
+        } catch (PDOException) {
+            // column already exists
+        }
+
+        // Same for catalog_items.type (theme|plugin|product badge in the
+        // marketplace card — added after the table first shipped)
+        try {
+            $pdo->exec("ALTER TABLE catalog_items ADD COLUMN type VARCHAR(20) NOT NULL DEFAULT 'product'");
         } catch (PDOException) {
             // column already exists
         }
