@@ -100,9 +100,9 @@
         <!-- Licenses (activations live in the second tab) -->
         <section id="view-licenses" class="view hidden">
             <div class="view-head"><h1>Licenses</h1>
-                <input id="license-search" class="input-sm head-search" placeholder="Search code / client / email…">
                 <div class="head-actions" id="lic-actions">
                     <button class="btn btn-primary" id="new-license-btn">+ New license</button>
+                    <input id="license-search" class="input-sm head-search" placeholder="Search code / client / email…">
                 </div>
             </div>
             <div class="tabs">
@@ -166,7 +166,6 @@
         <!-- Logs -->
         <section id="view-logs" class="view hidden">
             <div class="view-head"><h1>Activity Log</h1>
-                <input id="logs-q" class="input-sm head-search" placeholder="Search license / domain / IP / detail…">
                 <div class="head-actions" id="log-actions">
                     <select id="logs-action" class="input-sm"><option value="">All actions</option></select>
                     <select id="logs-result" class="input-sm">
@@ -179,6 +178,7 @@
                         <option value="50" selected>50 / page</option>
                         <option value="100">100 / page</option>
                     </select>
+                    <input id="logs-q" class="input-sm head-search" placeholder="Search license / domain / IP / detail…">
                 </div>
             </div>
             <div class="tabs">
