@@ -47,7 +47,10 @@ POST {site}/wp-json/ezit/v1/sso/token
 - `nonce` — `{unix_time}.{rand}`; the site rejects timestamps older than
   5 minutes, so captured requests can't be replayed
 - `sig` — `HMAC-SHA256(nonce, api_key)`
-- `sso/users` returns `[{id, login, display, roles[]}]`
+- `sso/users` returns `{users: [{id, login, display, roles[]}], roles: {slug: label}}` —
+  `roles` is the site's registered role map (`wp_roles()->get_names()`)
+  and feeds the provision role picker. Older sso builds omit it; the UI
+  falls back to the union of roles the users are actually assigned.
 - `sso/token` returns `{login_url}` or `{error}`
 
 Token mechanics: `user_meta ezit_sso_tokens = [sha256(token) => expiry]`

@@ -128,7 +128,11 @@ final class SiteLogin
             return ['users' => null, 'error' => 'Unexpected response from site.'];
         }
 
-        return ['users' => $data['users'], 'error' => null];
+        return [
+            'users' => $data['users'],
+            'roles' => (isset($data['roles']) && is_array($data['roles'])) ? $data['roles'] : null,
+            'error' => null,
+        ];
     }
 
     /**

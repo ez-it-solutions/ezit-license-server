@@ -488,6 +488,15 @@ th.sortable.sort-desc::after { content: '\2193'; opacity: 1; color: var(--green)
 }
 
 /* ── Client-site login modal ── */
+.sl-tabs { display: flex; gap: .2rem; border-bottom: 1px solid var(--border); margin-bottom: .9rem; }
+.sl-tab {
+    padding: .45rem .8rem .5rem; background: none; border: 0; cursor: pointer;
+    color: var(--muted); font: inherit; font-size: .88rem;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.sl-tab:hover { color: var(--text); }
+.sl-tab.active { color: var(--text); border-bottom-color: var(--green); font-weight: 600; }
+.sl-pane > .hint:first-child { margin-top: 0; }
 .sl-h {
     display: flex; align-items: center; justify-content: space-between; gap: .6rem;
     margin: 1.1rem 0 .4rem; font-size: .82rem; font-weight: 700;

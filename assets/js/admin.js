@@ -956,9 +956,32 @@
         $('#sl-remember').checked = false;
         $('#sl-p-remember').checked = false;
         $('#sitelogin-modal').classList.remove('hidden');
+        slTab('users');
         loadSiteUsers();
         loadSiteLogins();
     };
+
+    /** Modal tabs — Site users / Credentials / New account. */
+    function slTab(name) {
+        $$('#sitelogin-modal .sl-tab').forEach((t) => t.classList.toggle('active', t.dataset.sltab === name));
+        $$('#sitelogin-modal .sl-pane').forEach((p) => p.classList.toggle('hidden', p.id !== 'sl-pane-' + name));
+    }
+    $$('#sitelogin-modal .sl-tab').forEach((t) => t.addEventListener('click', () => slTab(t.dataset.sltab)));
+
+    /** Provision role picker — the site sends its registered roles
+     *  (slug => label); older sso builds don't, so fall back to the
+     *  union of roles the users are actually assigned. */
+    function slFillRoles(roles, users) {
+        let map = (roles && typeof roles === 'object' && !Array.isArray(roles)) ? roles : null;
+        if (!map) {
+            map = {};
+            (users || []).forEach((u) => (u.roles || []).forEach((r) => { map[r] = r; }));
+        }
+        if (!map.administrator) map.administrator = 'Administrator';
+        $('#sl-p-role').innerHTML = Object.entries(map)
+            .map(([slug, label]) => `<option value="${esc(slug)}"${slug === 'administrator' ? ' selected' : ''}>${esc(label)}</option>`)
+            .join('');
+    }
 
     /** POST site-login → open the returned one-time URL in a new tab. */
     async function siteLogin(params, btn) {
@@ -987,8 +1010,10 @@
         box.innerHTML = '<p class="hint">Loading…</p>';
         try {
             const r = await api('site-users?activation=' + slActivation);
-            box.innerHTML = r.data.length
-                ? r.data.map((u) => `<div class="sl-row">
+            const users = r.data.users || r.data; // {users, roles} | [users] legacy
+            slFillRoles(r.data.roles, users);
+            box.innerHTML = users.length
+                ? users.map((u) => `<div class="sl-row">
                     <span><strong>${esc(u.login)}</strong>${u.display && u.display !== u.login ? ` <small style="color:var(--muted)">${esc(u.display)}</small>` : ''}<br>
                     <small style="color:var(--muted)">${esc((u.roles || []).join(', ') || 'no role')}</small></span>
                     <button class="btn btn-sm" data-uid="${u.id}">Log in</button>

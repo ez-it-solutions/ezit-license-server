@@ -1254,7 +1254,10 @@ final class AdminApi
             $this->json(['error' => $res['error']], 502);
         }
 
-        $this->json(['data' => $res['users']]);
+        $this->json(['data' => [
+            'users' => $res['users'],
+            'roles' => $res['roles'] ?? new stdClass, // slug => label ({} when site doesn't send them)
+        ]]);
     }
 
     /**
