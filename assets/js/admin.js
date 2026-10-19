@@ -1344,7 +1344,7 @@
             } else {
                 r = await api('products', { method: 'POST', body });
             }
-            const newId   = r.data && r.data.id;
+            const newId   = r.data && +r.data.id;
             const newKey  = r.api_key || (r.data && r.data.api_key);
             const newCode = r.recovery_code || (r.data && r.data.recovery_code);
 
@@ -1370,7 +1370,7 @@
                 const pk = { ...pkgInfo, product_id: newId };
                 // loadProducts repopulates `products` — wait for it before opening.
                 const iv = setInterval(() => {
-                    if (products.some((p) => p.id === newId)) {
+                    if (products.some((p) => +p.id === newId)) {
                         clearInterval(iv);
                         openCatalogModal(null, pk);
                     }
@@ -1422,9 +1422,9 @@
         editingCatalog = item || null;
         $('#catalog-modal-title').textContent = item ? 'Edit listing' : 'New listing';
         $('#catalog-modal-error').classList.add('hidden');
-        const selId = item ? item.product_id : (prefill ? prefill.product_id : null);
+        const selId = +(item ? item.product_id : (prefill ? prefill.product_id : 0)) || 0;
         $('#cat-product').innerHTML = products.map((p) =>
-            `<option value="${p.id}"${selId === p.id ? ' selected' : ''}>${esc(p.name)} (${esc(p.product_id)})</option>`).join('');
+            `<option value="${p.id}"${+p.id === selId ? ' selected' : ''}>${esc(p.name)} (${esc(p.product_id)})</option>`).join('');
         $('#cat-slug').value = item ? item.slug : (prefill ? (prefill.slug || '') : '');
         $('#cat-type').value = (item && item.type) || (prefill && prefill.kind) || 'product';
         $('#cat-category').value = item ? item.category : 'generic';

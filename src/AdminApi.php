@@ -280,7 +280,7 @@ final class AdminApi
 
         // The raw code is returned exactly once — store only its hashes.
         $this->json(['data' => [
-            'id'            => $this->db->lastInsertId(),
+            'id'            => (int) $this->db->lastInsertId(),
             'product_id'    => $productId,
             'api_key'       => $apiKey,
             'recovery_code' => $recoveryCode,
