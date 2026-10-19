@@ -180,11 +180,12 @@
                     <label>Summary (optional)</label><input id="upd-summary" placeholder="What's new — one line">
                     <label>Changelog (optional)</label><textarea id="upd-changelog" rows="3" spellcheck="false"></textarea>
                     <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="upd-hassql" style="width:auto"> Requires SQL migration (<code>has_sql</code>)</label>
+                    <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="upd-forced" style="width:auto"> <b>Force update</b> — sites auto-apply on next check, no manual click</label>
                     <button class="btn btn-primary" type="submit" id="upd-btn">Publish update</button>
                 </form>
             </div>
             <div class="panel"><table id="updates-table">
-                <thead><tr><th>Product</th><th>Version</th><th>Released</th><th>Size</th><th>SQL</th><th>Summary</th><th></th></tr></thead>
+                <thead><tr><th>Product</th><th>Version</th><th>Released</th><th>Size</th><th>Flags</th><th>Summary</th><th></th></tr></thead>
                 <tbody></tbody>
             </table></div>
         </section>
@@ -442,7 +443,10 @@
             <h3 class="sl-h">Update package</h3>
             <div class="grid2">
                 <div><label>Version</label><input id="upd-m-version" placeholder="1.2.0"></div>
-                <div><label>&nbsp;</label><label class="check" style="margin-top:.4rem"><input type="checkbox" id="upd-m-hassql"> Contains database migrations (.sql)</label></div>
+                <div><label>&nbsp;</label>
+                    <label class="check" style="margin-top:.4rem"><input type="checkbox" id="upd-m-hassql"> Contains DB migrations (.sql) <small id="upd-m-sqlhint" style="color:var(--muted)"></small></label>
+                    <label class="check"><input type="checkbox" id="upd-m-forced"> <b>Force update</b> — sites auto-apply, no manual click</label>
+                </div>
             </div>
             <label>Summary <small style="color:var(--muted)">(one line)</small></label><input id="upd-m-summary" placeholder="What's new">
             <label>Changelog</label><textarea id="upd-m-changelog" rows="3" spellcheck="false"></textarea>

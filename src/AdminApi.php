@@ -719,7 +719,7 @@ final class AdminApi
     {
         $rows = $this->db->query(
             'SELECT u.id, u.update_id, u.version, u.summary, u.changelog,
-                    u.has_sql, u.file_size, u.release_date, u.created_at,
+                    u.has_sql, u.forced, u.file_size, u.release_date, u.created_at,
                     p.name AS product_name, p.product_id AS product_code,
                     (u.file_path IS NOT NULL AND u.file_path <> \'\') AS has_file
              FROM updates u JOIN products p ON p.id = u.product_id
@@ -742,6 +742,7 @@ final class AdminApi
         $summary   = trim((string) ($_POST['summary'] ?? '')) ?: null;
         $changelog = trim((string) ($_POST['changelog'] ?? '')) ?: null;
         $hasSql    = ! empty($_POST['has_sql']) ? 1 : 0;
+        $forced    = ! empty($_POST['forced']) ? 1 : 0;
         $file      = $_FILES['package'] ?? null;
 
         if ($productId <= 0 || $version === '') {
@@ -792,9 +793,9 @@ final class AdminApi
         }
 
         $this->db->prepare(
-            'INSERT INTO updates (product_id, update_id, version, summary, changelog, has_sql, file_path, file_size, release_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, date(\'now\'))'
-        )->execute([$productId, $updateId, $version, $summary, $changelog, $hasSql, $dest, $size]);
+            'INSERT INTO updates (product_id, update_id, version, summary, changelog, has_sql, forced, file_path, file_size, release_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, date(\'now\'))'
+        )->execute([$productId, $updateId, $version, $summary, $changelog, $hasSql, $forced, $dest, $size]);
 
         // get_config serves products.latest_version — keep it honest so the
         // bootstrap doc and check_update agree on what "newest" means.
@@ -961,6 +962,19 @@ final class AdminApi
             }
         }
 
+        // Summary = first meaningful changelog line (bullet stripped),
+        // else the header description — one line for the release notes.
+        $summary = null;
+        if ($changelog !== null && $changelog !== '') {
+            foreach (preg_split('/\r?\n/', $changelog) as $line) {
+                $line = trim((string) preg_replace('/^[*\-\x{2022}]+\s*/u', '', $line));
+                if ($line !== '') {
+                    $summary = $line;
+                    break;
+                }
+            }
+        }
+
         // ── screenshot → public bucket, same convention as catalogUpload ──
         $shotUrl = null;
         foreach ($entries as $n) {
@@ -1036,6 +1050,7 @@ final class AdminApi
             'name'           => $name,
             'version'        => $version,
             'excerpt'        => $excerpt,
+            'summary'        => $summary ?: $excerpt ?: null,
             'description'    => $readmeDesc ?: ($hdr['description'] ?? null),
             'author'         => $hdr['author'] ?? null,
             'changelog'      => $changelog,

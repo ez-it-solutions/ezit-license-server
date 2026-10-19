@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS updates (
     summary      TEXT DEFAULT NULL,
     changelog    TEXT DEFAULT NULL,
     has_sql      INTEGER NOT NULL DEFAULT 0,
+    forced       INTEGER NOT NULL DEFAULT 0,        -- 1 = sites auto-apply without a manual click
     file_path    VARCHAR(255) DEFAULT NULL,        -- path to update zip on this server
     file_size    INTEGER NOT NULL DEFAULT 0,
     release_date DATE NOT NULL,
@@ -235,6 +236,14 @@ SQL);
         // Same for licenses.features (JSON feature flags issued into certs)
         try {
             $pdo->exec('ALTER TABLE licenses ADD COLUMN features TEXT DEFAULT NULL');
+        } catch (PDOException) {
+            // column already exists
+        }
+
+        // updates.forced — check_update reports it so EzIT Core can
+        // auto-apply instead of waiting for a manual update click.
+        try {
+            $pdo->exec('ALTER TABLE updates ADD COLUMN forced INTEGER NOT NULL DEFAULT 0');
         } catch (PDOException) {
             // column already exists
         }

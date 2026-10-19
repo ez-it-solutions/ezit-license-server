@@ -457,7 +457,7 @@
                 <td class="mono">${esc(u.version)}</td>
                 <td>${esc(String(u.release_date || '').slice(0, 10))}</td>
                 <td>${u.has_file ? fmtSize(u.file_size) : '<span class="badge badge-fail">missing</span>'}</td>
-                <td>${u.has_sql ? '<span class="badge badge-suspended">yes</span>' : '—'}</td>
+                <td>${((u.has_sql ? '<span class="badge badge-suspended">sql</span> ' : '') + (+u.forced ? '<span class="badge badge-fail">forced</span>' : '')) || '—'}</td>
                 <td>${esc(u.summary || '')}</td>
                 <td><div class="row-actions">
                     <button class="btn btn-danger" onclick="EZL.deleteUpdate(${u.id})">Delete</button>
@@ -480,6 +480,7 @@
         fd.append('summary', $('#upd-summary').value.trim());
         fd.append('changelog', $('#upd-changelog').value.trim());
         if ($('#upd-hassql').checked) fd.append('has_sql', '1');
+        if ($('#upd-forced').checked) fd.append('forced', '1');
         fd.append('package', $('#upd-file').files[0]);
         try {
             const data = await postForm('updates', fd, (pct) => {
@@ -1129,6 +1130,8 @@
         $('#prod-id').readOnly = false;
         ['#upd-m-version', '#upd-m-summary', '#upd-m-changelog'].forEach((id) => { $(id).value = ''; });
         $('#upd-m-hassql').checked = false;
+        $('#upd-m-forced').checked = false;
+        $('#upd-m-sqlhint').textContent = '';
         $('#product-modal-title').textContent = p ? 'Edit product' : 'New product';
         $('#prod-id').value = p ? p.product_id : '';
         $('#prod-name').value = p ? p.name : '';
@@ -1204,8 +1207,10 @@
             $('#prod-id').readOnly = !!i.product_id;  // baked into the zip — lock it
         }
         $('#upd-m-version').value = i.version || '';
+        $('#upd-m-summary').value = i.summary || '';
         $('#upd-m-changelog').value = i.changelog || '';
         $('#upd-m-hassql').checked = !!i.has_sql;
+        $('#upd-m-sqlhint').textContent = i.has_sql ? '(auto-detected)' : '(none found — tick to force)';
     }
 
     function renderPkgCard() {
@@ -1293,6 +1298,7 @@
         fd.append('summary', $('#upd-m-summary').value.trim());
         fd.append('changelog', $('#upd-m-changelog').value.trim());
         if ($('#upd-m-hassql').checked) fd.append('has_sql', '1');
+        if ($('#upd-m-forced').checked) fd.append('forced', '1');
         fd.append('package', pkgFile);
         return postForm('updates', fd, null);
     }

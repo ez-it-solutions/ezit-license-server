@@ -343,6 +343,7 @@ final class LicenseApi
             'summary' => $update['summary'],
             'changelog' => $update['changelog'],
             'has_sql' => (bool) $update['has_sql'],
+            'forced' => (bool) ($update['forced'] ?? 0),
             'config_version' => $this->configVersion(),
         ]);
     }
