@@ -836,11 +836,23 @@ final class AdminApi
             $this->json(['error' => 'Package must be a .zip file.'], 422);
         }
         if (! class_exists('ZipArchive')) {
-            $this->json(['error' => 'ZipArchive is not enabled on this server.'], 500);
+            $this->json(['error' => 'PHP zip extension is not installed for this site\'s PHP version '
+                . '(apt install php8.x-zip -y && systemctl restart php8.x-fpm).'], 500);
         }
+        try {
+            $this->json(['data' => $this->inspectZipData((string) $file['tmp_name'])]);
+        } catch (Throwable $e) {
+            // Undefined functions / TypeErrors land here instead of a bare 500.
+            $this->json(['error' => 'Package inspect failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /** The archive walk — split out so any Error can be turned into JSON. */
+    private function inspectZipData(string $tmp): array
+    {
         $zip = new ZipArchive;
-        if ($zip->open((string) $file['tmp_name']) !== true) {
-            $this->json(['error' => 'Could not read the archive — is it a valid zip?'], 422);
+        if ($zip->open($tmp) !== true) {
+            throw new RuntimeException('Could not read the archive — is it a valid zip?');
         }
 
         // Inventory + package root dir (WP convention: one root folder = slug).
@@ -862,7 +874,15 @@ final class AdminApi
 
         $read = function (string $path) use ($zip) {
             $idx = $zip->locateName($path, ZipArchive::FL_NOCASE);
-            return $idx === false ? null : (string) $zip->getFromIndex($idx);
+            if ($idx === false) {
+                return null;
+            }
+            // getFromIndex loads the whole entry — skip monsters (OOM is uncatchable).
+            $stat = $zip->statIndex($idx);
+            if ($stat !== false && ($stat['size'] ?? 0) > 10 * 1024 * 1024) {
+                return null;
+            }
+            return (string) $zip->getFromIndex($idx);
         };
 
         // ── EzIT manifest: ezit.json first, then any core.json (≤3 deep) ──
@@ -1007,7 +1027,7 @@ final class AdminApi
             ? mb_strimwidth($desc, 0, 160, '…')
             : (strlen($desc) > 160 ? substr($desc, 0, 157) . '…' : $desc);
 
-        $this->json(['data' => [
+        return [
             'kind'           => $kind,
             'slug'           => $slug,
             'name'           => $name,
@@ -1020,7 +1040,7 @@ final class AdminApi
             'product_id'     => $productRef !== '' ? $productRef : null,
             'screenshot_url' => $shotUrl,
             'match'          => $match,
-        ]]);
+        ];
     }
 
     private function deleteUpdate(int $id): void
