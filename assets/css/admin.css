@@ -486,6 +486,8 @@ th.sortable.sort-desc::after { content: '\2193'; opacity: 1; color: var(--green)
 .pkg-hit { color: var(--green); font-size: .82rem; }
 .pkg-new { color: var(--warn); font-size: .82rem; }
 .pkg-card .btn { align-self: flex-start; margin-top: .2rem; }
+.upd-flags { display: flex; flex-direction: column; gap: .4rem; margin: .5rem 0 .3rem; }
+.upd-flags .check { margin: 0; }
 
 /* ── Mobile drawer — same sidebar slides in over a scrim ── */
 .nav-toggle { display: none; }

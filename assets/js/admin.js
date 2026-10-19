@@ -1119,6 +1119,7 @@
         regenRequested = false;
         pkgFile = pkgInfo = pkgMatch = null;
         $('#prod-file').value = '';
+        $('#prod-drop').classList.remove('hidden');
         $('#prod-pkg').classList.add('hidden');
         $('#prod-update').classList.add('hidden');
         $('#prod-fields').classList.remove('hidden');
@@ -1227,9 +1228,11 @@
                 <button type="button" class="btn btn-ghost btn-sm" id="pkg-clear">Remove package</button>
             </div>`;
         card.classList.remove('hidden');
+        $('#prod-drop').classList.add('hidden');  // card replaces the dropzone
         $('#pkg-clear').addEventListener('click', () => {
             pkgFile = pkgInfo = pkgMatch = null;
             card.classList.add('hidden');
+            $('#prod-drop').classList.remove('hidden');
             $('#prod-update').classList.add('hidden');
             $('#prod-mkt-wrap').classList.add('hidden');
             if (!editingProduct) {

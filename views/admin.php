@@ -443,13 +443,13 @@
             <h3 class="sl-h">Update package</h3>
             <div class="grid2">
                 <div><label>Version</label><input id="upd-m-version" placeholder="1.2.0"></div>
-                <div><label>&nbsp;</label>
-                    <label class="check" style="margin-top:.4rem"><input type="checkbox" id="upd-m-hassql"> Contains DB migrations (.sql) <small id="upd-m-sqlhint" style="color:var(--muted)"></small></label>
-                    <label class="check"><input type="checkbox" id="upd-m-forced"> <b>Force update</b> — sites auto-apply, no manual click</label>
-                </div>
+                <div><label>Summary <small style="color:var(--muted)">(one line)</small></label><input id="upd-m-summary" placeholder="What's new"></div>
             </div>
-            <label>Summary <small style="color:var(--muted)">(one line)</small></label><input id="upd-m-summary" placeholder="What's new">
             <label>Changelog</label><textarea id="upd-m-changelog" rows="3" spellcheck="false"></textarea>
+            <div class="upd-flags">
+                <label class="check"><input type="checkbox" id="upd-m-hassql"> Contains DB migrations (.sql) <small id="upd-m-sqlhint" style="color:var(--muted)"></small></label>
+                <label class="check"><input type="checkbox" id="upd-m-forced"> <b>Force update</b> — sites auto-apply, no manual click</label>
+            </div>
             <label class="check" id="prod-publish-wrap"><input type="checkbox" id="prod-publish" checked> Publish as an update — feeds check_update / download_update</label>
         </div>
 
