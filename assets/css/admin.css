@@ -465,6 +465,28 @@ th.sortable.sort-desc::after { content: '\2193'; opacity: 1; color: var(--green)
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
+/* ── Product wizard: drop zone + detected package card ── */
+.prod-drop {
+    border: 1.5px dashed var(--border); border-radius: 10px;
+    padding: .9rem 1.1rem; margin-bottom: .9rem; cursor: pointer;
+    transition: border-color .12s, background .12s;
+}
+.prod-drop p { margin: .1rem 0; }
+.prod-drop .hint { margin-top: .3rem; }
+.prod-drop:hover, .prod-drop.over { border-color: var(--green); background: var(--row-hover); }
+.prod-drop.busy { opacity: .6; pointer-events: none; }
+.pkg-card {
+    display: flex; gap: .9rem; align-items: flex-start;
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: .8rem; margin-bottom: .9rem; background: var(--panel2);
+}
+.pkg-thumb { width: 88px; height: 66px; object-fit: cover; border-radius: 6px; border: 1px solid var(--td-border); flex: none; }
+.pkg-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .25rem; font-size: .88rem; }
+.pkg-sub { color: var(--muted); font-size: .8rem; }
+.pkg-hit { color: var(--green); font-size: .82rem; }
+.pkg-new { color: var(--warn); font-size: .82rem; }
+.pkg-card .btn { align-self: flex-start; margin-top: .2rem; }
+
 /* ── Mobile drawer — same sidebar slides in over a scrim ── */
 .nav-toggle { display: none; }
 .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(2px); z-index: 75; }

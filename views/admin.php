@@ -407,24 +407,50 @@
     </div>
 </div>
 
-<!-- ─────────────── Product modal ─────────────── -->
+<!-- ─────────────── Product modal (package-first wizard) ─────────────── -->
 <div id="product-modal" class="modal hidden">
     <div class="modal-card">
         <h2 id="product-modal-title">New product</h2>
         <div id="product-modal-error" class="alert hidden"></div>
-        <div class="grid2">
-            <div><label>Product ID (matches core.json)</label><input id="prod-id" placeholder="5F061D22"></div>
-            <div><label>Latest version</label><input id="prod-version" value="1.0.0"></div>
+
+        <div id="prod-drop" class="prod-drop">
+            <input type="file" id="prod-file" accept=".zip" class="file-ghost">
+            <p><strong>Drop a .zip package</strong> — or click to browse</p>
+            <p class="hint">Reads WP headers, readme.txt and core.json like WordPress does —
+                detects the product, fills every field, and turns into “publish update”
+                when the package belongs to a product you already have.</p>
         </div>
-        <div class="grid2">
-            <div><label>Name</label><input id="prod-name" placeholder="Botble CMS"></div>
-            <div id="prod-status-wrap" class="hidden"><label>Status</label><select id="prod-status"><option value="enabled">enabled</option><option value="disabled">disabled</option></select></div>
+        <div id="prod-pkg" class="pkg-card hidden"></div>
+
+        <div id="prod-fields">
+            <div class="grid2">
+                <div><label>Product ID <small style="color:var(--muted)">(blank = auto)</small></label><input id="prod-id" placeholder="auto-generated"></div>
+                <div><label>Latest version</label><input id="prod-version" value="1.0.0"></div>
+            </div>
+            <div class="grid2">
+                <div><label>Name</label><input id="prod-name" placeholder="Botble CMS"></div>
+                <div id="prod-status-wrap" class="hidden"><label>Status</label><select id="prod-status"><option value="enabled">enabled</option><option value="disabled">disabled</option></select></div>
+            </div>
+            <div id="prod-key-wrap" class="hidden">
+                <label>API key (LB-API-KEY)</label>
+                <div class="input-btn"><input id="prod-key" class="mono" readonly><button type="button" class="btn btn-ghost btn-sm" id="prod-key-edit">Edit</button><button type="button" class="btn btn-ghost btn-sm" id="prod-regen">Regenerate</button></div>
+                <p class="hint">Changing the key breaks connected sites until their core.json apiKey is updated.</p>
+            </div>
         </div>
-        <div id="prod-key-wrap" class="hidden">
-            <label>API key (LB-API-KEY)</label>
-            <div class="input-btn"><input id="prod-key" class="mono" readonly><button type="button" class="btn btn-ghost btn-sm" id="prod-key-edit">Edit</button><button type="button" class="btn btn-ghost btn-sm" id="prod-regen">Regenerate</button></div>
-            <p class="hint">Changing the key breaks connected sites until their core.json apiKey is updated.</p>
+
+        <div id="prod-update" class="hidden">
+            <h3 class="sl-h">Update package</h3>
+            <div class="grid2">
+                <div><label>Version</label><input id="upd-m-version" placeholder="1.2.0"></div>
+                <div><label>&nbsp;</label><label class="check" style="margin-top:.4rem"><input type="checkbox" id="upd-m-hassql"> Contains database migrations (.sql)</label></div>
+            </div>
+            <label>Summary <small style="color:var(--muted)">(one line)</small></label><input id="upd-m-summary" placeholder="What's new">
+            <label>Changelog</label><textarea id="upd-m-changelog" rows="3" spellcheck="false"></textarea>
+            <label class="check" id="prod-publish-wrap"><input type="checkbox" id="prod-publish" checked> Publish as an update — feeds check_update / download_update</label>
         </div>
+
+        <label class="check" id="prod-mkt-wrap"><input type="checkbox" id="prod-mkt"> Create a marketplace listing afterwards</label>
+
         <div class="modal-actions">
             <button class="btn btn-ghost" data-close>Cancel</button>
             <button class="btn btn-primary" id="prod-save">Save product</button>

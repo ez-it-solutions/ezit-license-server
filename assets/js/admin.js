@@ -1110,9 +1110,25 @@
             : '<tr><td colspan="8" class="empty">No products</td></tr>';
     }
 
+    /* ── product wizard state: the dropped zip + its detected metadata ── */
+    let pkgFile = null, pkgInfo = null, pkgMatch = null;
+
     function openProductModal(p) {
         editingProduct = p || null;
         regenRequested = false;
+        pkgFile = pkgInfo = pkgMatch = null;
+        $('#prod-file').value = '';
+        $('#prod-pkg').classList.add('hidden');
+        $('#prod-update').classList.add('hidden');
+        $('#prod-fields').classList.remove('hidden');
+        $('#prod-publish-wrap').classList.remove('hidden');
+        $('#prod-publish').checked = true;
+        $('#prod-mkt-wrap').classList.add('hidden');
+        $('#prod-mkt').checked = false;
+        $('#prod-id').value = '';
+        $('#prod-id').readOnly = false;
+        ['#upd-m-version', '#upd-m-summary', '#upd-m-changelog'].forEach((id) => { $(id).value = ''; });
+        $('#upd-m-hassql').checked = false;
         $('#product-modal-title').textContent = p ? 'Edit product' : 'New product';
         $('#prod-id').value = p ? p.product_id : '';
         $('#prod-name').value = p ? p.name : '';
@@ -1125,6 +1141,117 @@
         $('#prod-key-edit').textContent = 'Edit';
         $('#product-modal').classList.remove('hidden');
     }
+
+    /** Drop a zip → POST package-inspect → morph the modal. */
+    async function inspectPackage(f) {
+        const err = $('#product-modal-error');
+        err.classList.add('hidden');
+        const dz = $('#prod-drop');
+        dz.classList.add('busy');
+        try {
+            const fd = new FormData();
+            fd.append('package', f);
+            const r = await postForm('package-inspect', fd, null);
+            pkgFile = f;
+            pkgInfo = r.data;
+            applyPkgInfo();
+        } catch (e) {
+            err.textContent = e.message;
+            err.classList.remove('hidden');
+        } finally {
+            dz.classList.remove('busy');
+        }
+    }
+
+    /** Decide create vs publish-update from what the zip told us. */
+    function applyPkgInfo() {
+        const i = pkgInfo;
+        if (!i) return;
+        if (editingProduct) {
+            // Dropped a zip while editing — only allowed for THIS product.
+            const same = i.product_id ? i.product_id === editingProduct.product_id : true;
+            if (!same) {
+                pkgInfo = pkgFile = null;
+                $('#product-modal-error').textContent =
+                    `Package belongs to product ${i.product_id} — this is ${editingProduct.product_id}.`;
+                $('#product-modal-error').classList.remove('hidden');
+                return;
+            }
+            pkgMatch = editingProduct;
+        } else {
+            pkgMatch = i.match || null;
+        }
+        renderPkgCard();
+
+        if (pkgMatch) {
+            // Publish-update mode: product fields hide, version/summary prefill.
+            $('#product-modal-title').textContent = `Publish ${pkgMatch.name} ${i.version}`;
+            $('#prod-fields').classList.add('hidden');
+            $('#prod-update').classList.remove('hidden');
+            $('#prod-publish-wrap').classList.add('hidden');
+            $('#prod-publish').checked = true;
+            $('#prod-mkt-wrap').classList.add('hidden');
+        } else {
+            // New-product mode: everything prefills, update + listing optional.
+            $('#prod-fields').classList.remove('hidden');
+            $('#prod-update').classList.remove('hidden');
+            $('#prod-publish-wrap').classList.remove('hidden');
+            $('#prod-publish').checked = true;
+            $('#prod-mkt-wrap').classList.remove('hidden');
+            $('#prod-name').value = i.name || '';
+            $('#prod-version').value = i.version || '1.0.0';
+            $('#prod-id').value = i.product_id || '';
+            $('#prod-id').readOnly = !!i.product_id;  // baked into the zip — lock it
+        }
+        $('#upd-m-version').value = i.version || '';
+        $('#upd-m-changelog').value = i.changelog || '';
+        $('#upd-m-hassql').checked = !!i.has_sql;
+    }
+
+    function renderPkgCard() {
+        const card = $('#prod-pkg');
+        if (!pkgInfo) { card.classList.add('hidden'); return; }
+        const i = pkgInfo;
+        card.innerHTML = `
+            ${i.screenshot_url ? `<img class="pkg-thumb" src="${esc(i.screenshot_url)}" alt="">` : ''}
+            <div class="pkg-meta">
+                <div><strong>${esc(i.name || pkgFile.name)}</strong> <span class="badge">${esc(i.kind)}</span></div>
+                <div class="pkg-sub">${esc(i.slug || '')} · v${esc(i.version || '?')}${i.author ? ' · ' + esc(i.author) : ''}</div>
+                ${pkgMatch ? `<div class="pkg-hit">Matches <strong>${esc(pkgMatch.name)}</strong> (${esc(pkgMatch.product_id)}, latest ${esc(pkgMatch.latest_version)}) — this saves as a new version.</div>`
+                          : '<div class="pkg-new">New product — will be created on save.</div>'}
+                <button type="button" class="btn btn-ghost btn-sm" id="pkg-clear">Remove package</button>
+            </div>`;
+        card.classList.remove('hidden');
+        $('#pkg-clear').addEventListener('click', () => {
+            pkgFile = pkgInfo = pkgMatch = null;
+            card.classList.add('hidden');
+            $('#prod-update').classList.add('hidden');
+            $('#prod-mkt-wrap').classList.add('hidden');
+            if (!editingProduct) {
+                $('#prod-fields').classList.remove('hidden');
+                $('#prod-id').readOnly = false;
+            }
+            $('#product-modal-title').textContent = editingProduct ? 'Edit product' : 'New product';
+        });
+    }
+
+    // Drop zone — click opens the picker; drag-over highlights.
+    const prodDrop = $('#prod-drop');
+    prodDrop.addEventListener('click', () => $('#prod-file').click());
+    ['dragover', 'dragenter'].forEach((ev) => prodDrop.addEventListener(ev, (e) => {
+        e.preventDefault(); prodDrop.classList.add('over');
+    }));
+    ['dragleave', 'drop'].forEach((ev) => prodDrop.addEventListener(ev, (e) => {
+        e.preventDefault(); prodDrop.classList.remove('over');
+    }));
+    prodDrop.addEventListener('drop', (e) => {
+        const f = e.dataTransfer.files[0];
+        if (f) inspectPackage(f);
+    });
+    $('#prod-file').addEventListener('change', (e) => {
+        const f = e.target.files[0];
+        if (f) inspectPackage(f);
+    });
 
     window.EZL.editProduct = (id) => openProductModal(products.find((x) => x.id === id));
     window.EZL.toggleProduct = async (id) => {
@@ -1158,16 +1285,43 @@
         }
     });
 
+    /** Publish the attached package as an update row for product rowId. */
+    async function publishPackage(rowId) {
+        const fd = new FormData();
+        fd.append('product_id', rowId);
+        fd.append('version', $('#upd-m-version').value.trim());
+        fd.append('summary', $('#upd-m-summary').value.trim());
+        fd.append('changelog', $('#upd-m-changelog').value.trim());
+        if ($('#upd-m-hassql').checked) fd.append('has_sql', '1');
+        fd.append('package', pkgFile);
+        return postForm('updates', fd, null);
+    }
+
     $('#prod-save').addEventListener('click', async () => {
         const err = $('#product-modal-error');
         err.classList.add('hidden');
-        const body = {
-            product_id: $('#prod-id').value.trim(),
-            name: $('#prod-name').value.trim(),
-            latest_version: $('#prod-version').value.trim(),
-            status: $('#prod-status').value,
-        };
+        const saveBtn = $('#prod-save');
+        saveBtn.disabled = true;
+        const done = () => { saveBtn.disabled = false; };
+
         try {
+            // A dropped package that matched a product → pure publish-update.
+            if (pkgFile && pkgMatch) {
+                await publishPackage(pkgMatch.id);
+                $('#product-modal').classList.add('hidden');
+                toast(`Published ${pkgMatch.name} ${$('#upd-m-version').value.trim()}`);
+                loadProducts();
+                loadUpdates();
+                done();
+                return;
+            }
+
+            const body = {
+                product_id: $('#prod-id').value.trim(),
+                name: $('#prod-name').value.trim(),
+                latest_version: $('#prod-version').value.trim(),
+                status: $('#prod-status').value,
+            };
             let r;
             if (editingProduct) {
                 if (regenRequested) {
@@ -1181,16 +1335,44 @@
             } else {
                 r = await api('products', { method: 'POST', body });
             }
-            const newKey = r.api_key || (r.data && r.data.api_key);
+            const newId   = r.data && r.data.id;
+            const newKey  = r.api_key || (r.data && r.data.api_key);
             const newCode = r.recovery_code || (r.data && r.data.recovery_code);
+
+            // Attached zip on a NEW product → optionally publish as an update.
+            if (pkgFile && !editingProduct && $('#prod-publish').checked) {
+                try {
+                    await publishPackage(newId);
+                } catch (e3) {
+                    toast('Product saved, but update publish failed: ' + e3.message);
+                }
+            }
+
             $('#product-modal').classList.add('hidden');
-            toast(editingProduct ? 'Product updated' + (newKey ? ' — new key: ' + newKey : '') : 'Product created — copy its API key into core.json');
+            toast(editingProduct
+                ? 'Product updated' + (newKey ? ' — new key: ' + newKey : '')
+                : 'Product created — copy its API key into core.json');
             if (newCode) showRecoveryCode(newCode, newKey ? 'The API key rotated — the old recovery code is dead too.' : null);
             loadProducts();
+            loadUpdates();
+
+            // Marketplace opt-in → continue straight into a prefilled listing.
+            if (pkgFile && !editingProduct && $('#prod-mkt').checked && pkgInfo) {
+                const pk = { ...pkgInfo, product_id: newId };
+                // loadProducts repopulates `products` — wait for it before opening.
+                const iv = setInterval(() => {
+                    if (products.some((p) => p.id === newId)) {
+                        clearInterval(iv);
+                        openCatalogModal(null, pk);
+                    }
+                }, 150);
+                setTimeout(() => clearInterval(iv), 5000);
+            }
         } catch (e2) {
             err.textContent = e2.message;
             err.classList.remove('hidden');
         }
+        done();
     });
 
     /* ── marketplace catalog (Products → Marketplace tab) ── */
@@ -1226,22 +1408,24 @@
             : '<tr><td colspan="9" class="hint" style="padding:1rem">No marketplace listings yet.</td></tr>';
     }
 
-    function openCatalogModal(item) {
+    /** item = existing listing to edit; prefill = package-inspect data for a new one. */
+    function openCatalogModal(item, prefill) {
         editingCatalog = item || null;
         $('#catalog-modal-title').textContent = item ? 'Edit listing' : 'New listing';
         $('#catalog-modal-error').classList.add('hidden');
+        const selId = item ? item.product_id : (prefill ? prefill.product_id : null);
         $('#cat-product').innerHTML = products.map((p) =>
-            `<option value="${p.id}"${item && item.product_id === p.id ? ' selected' : ''}>${esc(p.name)} (${esc(p.product_id)})</option>`).join('');
-        $('#cat-slug').value = item ? item.slug : '';
-        $('#cat-type').value = (item && item.type) || 'product';
+            `<option value="${p.id}"${selId === p.id ? ' selected' : ''}>${esc(p.name)} (${esc(p.product_id)})</option>`).join('');
+        $('#cat-slug').value = item ? item.slug : (prefill ? (prefill.slug || '') : '');
+        $('#cat-type').value = (item && item.type) || (prefill && prefill.kind) || 'product';
         $('#cat-category').value = item ? item.category : 'generic';
         $('#cat-price').value = item && item.price !== null ? item.price : '';
-        $('#cat-thumb').value = (item && item.thumb) || '';
+        $('#cat-thumb').value = (item && item.thumb) || (prefill && prefill.screenshot_url) || '';
         try { $('#cat-screens').value = item && item.screenshots ? JSON.parse(item.screenshots).join(', ') : ''; } catch { $('#cat-screens').value = ''; }
-        $('#cat-excerpt').value = (item && item.excerpt) || '';
-        $('#cat-body').value = (item && item.body) || '';
+        $('#cat-excerpt').value = (item && item.excerpt) || (prefill && prefill.excerpt) || '';
+        $('#cat-body').value = (item && item.body) || (prefill && prefill.description) || '';
         $('#cat-free').checked = !!(item && +item.is_free);
-        $('#cat-published').checked = !!(item && +item.published);
+        $('#cat-published').checked = item ? !!(item.published) : !!prefill;
         try { catScope = item && item.license_scope ? JSON.parse(item.license_scope) : []; }
         catch { catScope = []; }
         renderScopeChips();

@@ -57,6 +57,7 @@ final class AdminApi
             $resource === 'licenses' && $id && $sub === 'users' && $method === 'GET' => $this->licenseUsers((int) $id),
             $resource === 'licenses' && $id && $sub === 'users' && $method === 'POST' => $this->createLicenseUser((int) $id),
             $resource === 'licenses' && $id && $sub === 'users' && $method === 'DELETE' && isset($segments[3]) => $this->deleteLicenseUser((int) $id, (int) $segments[3]),
+            $path === 'package-inspect' && $method === 'POST' => $this->inspectPackage(),
             $resource === 'updates' && $method === 'GET' && ! $id => $this->listUpdates(),
             $resource === 'updates' && $method === 'POST' && ! $id => $this->createUpdate(),
             $resource === 'updates' && $method === 'DELETE' && $id => $this->deleteUpdate((int) $id),
@@ -245,11 +246,17 @@ final class AdminApi
     private function createProduct(): void
     {
         $b = $this->body();
-        $productId = trim((string) ($b['product_id'] ?? ''));
+        $productId = strtoupper(trim((string) ($b['product_id'] ?? '')));
         $name = trim((string) ($b['name'] ?? ''));
 
-        if ($productId === '' || $name === '') {
-            $this->json(['error' => 'Product ID and name are required.'], 422);
+        if ($name === '') {
+            $this->json(['error' => 'Product name is required.'], 422);
+        }
+        if ($productId === '') {
+            // Blank → mint the LicenseBox-style ID ourselves (5F061D22-style).
+            do {
+                $productId = strtoupper(bin2hex(random_bytes(4)));
+            } while ($this->productIdTaken($productId));
         }
         if ($this->productIdTaken($productId)) {
             $this->json(['error' => 'Product ID "' . $productId . '" is already in use.'], 409);
@@ -269,7 +276,12 @@ final class AdminApi
         ]);
 
         // The raw code is returned exactly once — store only its hashes.
-        $this->json(['data' => ['id' => $this->db->lastInsertId(), 'api_key' => $apiKey, 'recovery_code' => $recoveryCode]], 201);
+        $this->json(['data' => [
+            'id'            => $this->db->lastInsertId(),
+            'product_id'    => $productId,
+            'api_key'       => $apiKey,
+            'recovery_code' => $recoveryCode,
+        ]], 201);
     }
 
     private function productIdTaken(string $productId, int $exceptId = 0): bool
@@ -796,6 +808,213 @@ final class AdminApi
             'update_id' => $updateId,
             'version'   => $version,
         ]], 201);
+    }
+
+    /**
+     * Inspect an uploaded .zip — WordPress-style package introspection.
+     * Reads the WP plugin/theme header, readme.txt and an EzIT manifest
+     * (ezit.json, or any core.json up to 3 levels deep) straight from the
+     * archive. Nothing is persisted except an extracted screenshot, which
+     * lands in the same public uploads/catalog bucket as listing images.
+     *
+     * The admin UI uses the result to decide between "new product" and
+     * "publish update" (manifest productId / catalog slug / name matches
+     * an existing product) and to prefill every field.
+     *
+     * Multipart field: package. → {data: {kind, slug, name, version,
+     * excerpt, description, author, changelog, has_sql, product_id,
+     * screenshot_url, match}}
+     */
+    private function inspectPackage(): void
+    {
+        $file = $_FILES['package'] ?? null;
+        if (! is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK
+            || ! is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
+            $this->json(['error' => 'A .zip package upload is required.'], 422);
+        }
+        if (strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION)) !== 'zip') {
+            $this->json(['error' => 'Package must be a .zip file.'], 422);
+        }
+        if (! class_exists('ZipArchive')) {
+            $this->json(['error' => 'ZipArchive is not enabled on this server.'], 500);
+        }
+        $zip = new ZipArchive;
+        if ($zip->open((string) $file['tmp_name']) !== true) {
+            $this->json(['error' => 'Could not read the archive — is it a valid zip?'], 422);
+        }
+
+        // Inventory + package root dir (WP convention: one root folder = slug).
+        $entries = [];
+        $roots   = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $n = str_replace('\\', '/', (string) $zip->getNameIndex($i));
+            if ($n === '' || str_ends_with($n, '/')) {
+                continue;
+            }
+            $entries[] = $n;
+            if (str_contains($n, '/')) {
+                $seg = strstr($n, '/', true);
+                $roots[$seg] = ($roots[$seg] ?? 0) + 1;
+            }
+        }
+        arsort($roots);
+        $rootDir = (string) (array_key_first($roots) ?? '');
+
+        $read = function (string $path) use ($zip) {
+            $idx = $zip->locateName($path, ZipArchive::FL_NOCASE);
+            return $idx === false ? null : (string) $zip->getFromIndex($idx);
+        };
+
+        // ── EzIT manifest: ezit.json first, then any core.json (≤3 deep) ──
+        $manifest = [];
+        foreach ($entries as $n) {
+            if (str_contains($n, 'node_modules/')) {
+                continue;
+            }
+            if (basename($n) === 'ezit.json' || (basename($n) === 'core.json' && substr_count($n, '/') <= 3)) {
+                $m = json_decode($read($n) ?? '', true);
+                if (is_array($m) && ($m['productId'] ?? $m['product_id'] ?? null)) {
+                    $manifest = $m;
+                    break;
+                }
+                $manifest = is_array($m) ? $m : [];
+            }
+        }
+
+        // ── WP-style headers: theme style.css or the plugin's main .php ──
+        $parse = function (string $src): array {
+            $out = [];
+            foreach (['Plugin Name' => 'name', 'Theme Name' => 'name',
+                      'Description' => 'description', 'Version' => 'version',
+                      'Author' => 'author', 'Text Domain' => 'text_domain'] as $k => $key) {
+                if (preg_match('/^[ \t\/*#@]*' . preg_quote($k, '/') . ':[ \t]*([^\r\n]+)/mi', $src, $m)) {
+                    $out[$key] = trim($m[1]);
+                }
+            }
+            return $out;
+        };
+        $kind = 'product';
+        $hdr  = [];
+        $style = $read($rootDir . '/style.css');
+        if ($style !== null && isset($parse($style)['name'])) {
+            // style.css with a Theme Name header → a WP theme
+            $h = $parse($style);
+            if (preg_match('/Theme Name:/i', $style)) {
+                $kind = 'theme';
+                $hdr  = $h;
+            }
+        }
+        if ($kind === 'product') {
+            $scanned = 0;
+            foreach ($entries as $n) {
+                if ($scanned++ > 60) {
+                    break;
+                }
+                if (substr_count($n, '/') <= 2 && str_ends_with(strtolower($n), '.php')
+                    && ! str_contains($n, 'node_modules/')) {
+                    $src = $read($n) ?? '';
+                    if (preg_match('/Plugin Name:/i', $src)) {
+                        $kind = 'plugin';
+                        $hdr  = $parse($src);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // ── readme.txt: stable tag, description, latest changelog block ──
+        $readme = $read($rootDir . '/readme.txt') ?? $read($rootDir . '/README.txt') ?? '';
+        $readmeVer = $readmeDesc = $changelog = null;
+        if (preg_match('/Stable tag:[ \t]*([^\r\n]+)/i', $readme, $m)) {
+            $readmeVer = trim($m[1]);
+        }
+        if (preg_match('/==\s*Description\s*==\s*(.+?)(?:\r?\n==|$)/s', $readme, $m)) {
+            $readmeDesc = trim($m[1]);
+        }
+        if (preg_match('/==\s*Changelog\s*==\s*(.+?)(?:\r?\n==|$)/s', $readme, $m)) {
+            // first "= x.y.z =" block only — the newest entry
+            if (preg_match('/=\s*[0-9][^\s=]*\s*=\s*(.+?)(?:\r?\n=|$)/s', trim($m[1]), $mm)) {
+                $changelog = trim($mm[1]);
+            }
+        }
+
+        // ── screenshot → public bucket, same convention as catalogUpload ──
+        $shotUrl = null;
+        foreach ($entries as $n) {
+            if (preg_match('/^screenshot(-\d+)?\.(png|jpe?g|webp)$/i', basename($n))) {
+                $ext = strtolower(pathinfo($n, PATHINFO_EXTENSION));
+                $dir = dirname(__DIR__) . '/uploads/catalog';
+                if (is_dir($dir) || mkdir($dir, 0755, true)) {
+                    $fname = 'cat-' . bin2hex(random_bytes(8)) . '.' . $ext;
+                    $stream = $zip->getStream($n);
+                    if ($stream !== false) {
+                        $out = fopen($dir . '/' . $fname, 'wb');
+                        if ($out !== false) {
+                            stream_copy_to_stream($stream, $out);
+                            fclose($out);
+                            fclose($stream);
+                            $scheme = (! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                            $base   = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
+                            $shotUrl = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $base . '/uploads/catalog/' . $fname;
+                        } else {
+                            fclose($stream);
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        $hasSql = false;
+        foreach ($entries as $n) {
+            if (str_ends_with(strtolower($n), '.sql') && ! str_contains($n, 'node_modules/')) {
+                $hasSql = true;
+                break;
+            }
+        }
+
+        $slug = $rootDir !== '' ? $rootDir : (string) ($hdr['text_domain'] ?? '');
+        $slug = strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '-', $slug), '-'));
+        $name = (string) ($hdr['name'] ?? $manifest['name'] ?? '');
+        if ($name === '' && $slug !== '') {
+            $name = ucwords(str_replace('-', ' ', $slug));
+        }
+        $version = (string) ($hdr['version'] ?? $manifest['version'] ?? $readmeVer ?? '1.0.0');
+        $productRef = strtoupper(trim((string) ($manifest['productId'] ?? $manifest['product_id'] ?? '')));
+        $zip->close();
+
+        // ── Match: manifest productId → catalog slug → exact name ──
+        $match = null;
+        if ($productRef !== '') {
+            $stmt = $this->db->prepare('SELECT id, product_id, name, latest_version FROM products WHERE product_id = ?');
+            $stmt->execute([$productRef]);
+            $match = $stmt->fetch() ?: null;
+        }
+        if (! $match && $slug !== '') {
+            $stmt = $this->db->prepare('SELECT p.id, p.product_id, p.name, p.latest_version FROM catalog_items c JOIN products p ON p.id = c.product_id WHERE c.slug = ?');
+            $stmt->execute([$slug]);
+            $match = $stmt->fetch() ?: null;
+        }
+        if (! $match && $name !== '') {
+            $stmt = $this->db->prepare('SELECT id, product_id, name, latest_version FROM products WHERE lower(name) = lower(?)');
+            $stmt->execute([$name]);
+            $match = $stmt->fetch() ?: null;
+        }
+
+        $this->json(['data' => [
+            'kind'           => $kind,
+            'slug'           => $slug,
+            'name'           => $name,
+            'version'        => $version,
+            'excerpt'        => mb_strimwidth((string) ($hdr['description'] ?? ''), 0, 160, '…'),
+            'description'    => $readmeDesc ?: ($hdr['description'] ?? null),
+            'author'         => $hdr['author'] ?? null,
+            'changelog'      => $changelog,
+            'has_sql'        => $hasSql,
+            'product_id'     => $productRef !== '' ? $productRef : null,
+            'screenshot_url' => $shotUrl,
+            'match'          => $match,
+        ]]);
     }
 
     private function deleteUpdate(int $id): void
