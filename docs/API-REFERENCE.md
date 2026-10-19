@@ -194,7 +194,7 @@ All other calls need `X-CSRF-TOKEN`. Throttled 8 fails/IP/10min.
 | `activations` | GET | list |
 | `activations/{id}` | PUT/DELETE | enable/disable / revoke |
 | `updates` | GET/POST | list packages / publish — **multipart**, fields `product_id`, `version`, `summary?`, `changelog?`, `has_sql?`, `forced?`, `package` (zip, required, ≤250 MB). Bumps `products.latest_version` when newer |
-| `updates/{id}` | DELETE | remove package + stored zip |
+| `updates/{id}` | PUT/DELETE | edit `summary?`, `changelog?`, `has_sql?`, `forced?` (zip immutable) / remove package + stored zip |
 | `logs` | GET | `?q=&action=&result=&page=&per=` (per 10–200) + distinct `actions` list |
 | `logs/purge` | POST | run retention rules now — returns `{deleted: {action: n}, total}` |
 | `log-rules` | GET/POST | retention rules — `{action|'*', retain_days (0=forever), keep_last, enabled}`; `keep_last` pins the newest N rows per action×license×domain |

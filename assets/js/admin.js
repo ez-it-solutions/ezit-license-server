@@ -448,9 +448,13 @@
         ? (b / 1048576).toFixed(1) + ' MB'
         : Math.max(1, Math.round((b || 0) / 1024)) + ' KB';
 
+    let updates = [];
+    let editingUpdate = null;
+
     async function loadUpdates() {
         await loadProductOptions();
         const r = await api('updates');
+        updates = r.data;
         $('#updates-table tbody').innerHTML = r.data.length
             ? r.data.map((u) => `<tr>
                 <td>${esc(u.product_name)}<br><small style="color:var(--muted)">${esc(u.product_code)}</small></td>
@@ -460,6 +464,7 @@
                 <td>${((u.has_sql ? '<span class="badge badge-suspended">sql</span> ' : '') + (+u.forced ? '<span class="badge badge-fail">forced</span>' : '')) || '—'}</td>
                 <td>${esc(u.summary || '')}</td>
                 <td><div class="row-actions">
+                    <button class="btn btn-ghost" onclick="EZL.editUpdate(${u.id})">Edit</button>
                     <button class="btn btn-danger" onclick="EZL.deleteUpdate(${u.id})">Delete</button>
                 </div></td></tr>`).join('')
             : '<tr><td colspan="7" class="empty">No packages yet — publish your first update</td></tr>';
@@ -497,6 +502,40 @@
         } finally {
             btn.disabled = false;
             setBtn('Publish update');
+        }
+    });
+
+    window.EZL.editUpdate = (id) => {
+        const u = updates.find((x) => +x.id === +id);
+        if (!u) return;
+        editingUpdate = u;
+        $('#update-modal-error').classList.add('hidden');
+        $('#ue-product').value = `${u.product_name} (${u.product_code})`;
+        $('#ue-version').value = u.version;
+        $('#ue-summary').value = u.summary || '';
+        $('#ue-changelog').value = u.changelog || '';
+        $('#ue-hassql').checked = !!+u.has_sql;
+        $('#ue-forced').checked = !!+u.forced;
+        $('#update-modal').classList.remove('hidden');
+    };
+
+    $('#ue-save').addEventListener('click', async () => {
+        if (!editingUpdate) return;
+        const err = $('#update-modal-error');
+        err.classList.add('hidden');
+        try {
+            await api('updates/' + editingUpdate.id, { method: 'PUT', body: {
+                summary:   $('#ue-summary').value.trim(),
+                changelog: $('#ue-changelog').value.trim(),
+                has_sql:   $('#ue-hassql').checked ? 1 : 0,
+                forced:    $('#ue-forced').checked ? 1 : 0,
+            }});
+            $('#update-modal').classList.add('hidden');
+            toast('Update ' + editingUpdate.version + ' saved');
+            loadUpdates();
+        } catch (e) {
+            err.textContent = e.message;
+            err.classList.remove('hidden');
         }
     });
 

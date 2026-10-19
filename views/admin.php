@@ -462,6 +462,29 @@
     </div>
 </div>
 
+<!-- ─────────────── Update edit modal (metadata only) ─────────────── -->
+<div id="update-modal" class="modal hidden">
+    <div class="modal-card">
+        <h2>Edit update</h2>
+        <div id="update-modal-error" class="alert hidden"></div>
+        <div class="grid2">
+            <div><label>Product</label><input id="ue-product" disabled></div>
+            <div><label>Version</label><input id="ue-version" disabled></div>
+        </div>
+        <label>Summary <small style="color:var(--muted)">(one line)</small></label><input id="ue-summary" placeholder="What's new">
+        <label>Changelog</label><textarea id="ue-changelog" rows="4" spellcheck="false"></textarea>
+        <div class="upd-flags">
+            <label class="check"><input type="checkbox" id="ue-hassql"> Contains DB migrations (.sql)</label>
+            <label class="check"><input type="checkbox" id="ue-forced"> <b>Force update</b> — sites auto-apply, no manual click</label>
+        </div>
+        <p class="hint">The package file is immutable — republish to swap the zip. Clearing Force retracts pending rollouts (sites re-check the flag before applying).</p>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" data-close>Cancel</button>
+            <button class="btn btn-primary" id="ue-save">Save update</button>
+        </div>
+    </div>
+</div>
+
 <!-- ─────────────── License users modal ─────────────── -->
 <div id="users-modal" class="modal hidden">
     <div class="modal-card">

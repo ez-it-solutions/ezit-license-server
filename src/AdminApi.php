@@ -63,6 +63,7 @@ final class AdminApi
             $path === 'package-inspect' && $method === 'POST' => $this->inspectPackage(),
             $resource === 'updates' && $method === 'GET' && ! $id => $this->listUpdates(),
             $resource === 'updates' && $method === 'POST' && ! $id => $this->createUpdate(),
+            $resource === 'updates' && $method === 'PUT' && $id => $this->updateUpdate((int) $id),
             $resource === 'updates' && $method === 'DELETE' && $id => $this->deleteUpdate((int) $id),
             $path === 'catalog-upload' && $method === 'POST' => $this->catalogUpload(),
             $resource === 'catalog' && $method === 'GET' => $this->listCatalog(),
@@ -1059,6 +1060,43 @@ final class AdminApi
             'screenshot_url' => $shotUrl,
             'match'          => $match,
         ];
+    }
+
+    /**
+     * Edit a published update's metadata — summary, changelog and the
+     * has_sql/forced flags. The zip and version are immutable: republish
+     * to change the binary. Clearing `forced` is how a forced rollout is
+     * retracted — pending site crons re-check the flag before applying.
+     */
+    private function updateUpdate(int $id): void
+    {
+        $b = $this->body();
+
+        $stmt = $this->db->prepare(
+            'SELECT u.*, p.name AS product_name FROM updates u
+             JOIN products p ON p.id = u.product_id WHERE u.id = ?'
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (! $row) {
+            $this->json(['error' => 'Update not found.'], 404);
+        }
+
+        $summary   = array_key_exists('summary', $b)   ? (trim((string) $b['summary']) ?: null)   : $row['summary'];
+        $changelog = array_key_exists('changelog', $b) ? (trim((string) $b['changelog']) ?: null) : $row['changelog'];
+        $hasSql    = array_key_exists('has_sql', $b) ? (! empty($b['has_sql']) ? 1 : 0) : (int) $row['has_sql'];
+        $forced    = array_key_exists('forced', $b)  ? (! empty($b['forced']) ? 1 : 0)  : (int) $row['forced'];
+
+        $this->db->prepare(
+            'UPDATE updates SET summary = ?, changelog = ?, has_sql = ?, forced = ? WHERE id = ?'
+        )->execute([$summary, $changelog, $hasSql, $forced, $id]);
+
+        Database::log($this->db, 'admin_update_edit', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
+            $row['product_name'] . ' ' . $row['version']
+            . ($forced && ! (int) $row['forced'] ? ' (forced on)'
+               : (! $forced && (int) $row['forced'] ? ' (forced off)' : '')), true);
+
+        $this->json(['ok' => true]);
     }
 
     private function deleteUpdate(int $id): void
