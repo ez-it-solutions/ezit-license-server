@@ -231,6 +231,9 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
 .code-area { font-size: .8rem; line-height: 1.5; resize: vertical; white-space: pre; }
 input[readonly] { background: var(--panel2); color: var(--muted); cursor: default; }
+/* Native picker icons are black-on-black in dark mode — invert them. */
+input::-webkit-calendar-picker-indicator { filter: invert(.85); cursor: pointer; }
+[data-theme="light"] input::-webkit-calendar-picker-indicator { filter: none; }
 .input-sm { width: 240px; padding: .45rem .65rem; }
 .btn {
     display: inline-block; border: 1px solid var(--border); background: var(--panel2);

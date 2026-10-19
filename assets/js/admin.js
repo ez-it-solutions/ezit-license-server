@@ -1200,6 +1200,8 @@
         ['#upd-m-version', '#upd-m-summary', '#upd-m-changelog'].forEach((id) => { $(id).value = ''; });
         $('#upd-m-hassql').checked = false;
         $('#upd-m-forced').checked = false;
+        $('#upd-m-forceat').value = '';
+        $('#upd-m-forceat-wrap').classList.add('hidden');
         $('#upd-m-sqlhint').textContent = '';
         $('#product-modal-title').textContent = p ? 'Edit product' : 'New product';
         $('#prod-id').value = p ? p.product_id : '';
@@ -1369,10 +1371,17 @@
         fd.append('summary', $('#upd-m-summary').value.trim());
         fd.append('changelog', $('#upd-m-changelog').value.trim());
         if ($('#upd-m-hassql').checked) fd.append('has_sql', '1');
-        if ($('#upd-m-forced').checked) fd.append('forced', '1');
+        if ($('#upd-m-forced').checked) {
+            fd.append('forced', '1');
+            if ($('#upd-m-forceat').value) fd.append('force_at', $('#upd-m-forceat').value);
+        }
         fd.append('package', pkgFile);
         return postForm('updates', fd, null);
     }
+
+    $('#upd-m-forced').addEventListener('change', (e) => {
+        $('#upd-m-forceat-wrap').classList.toggle('hidden', !e.target.checked);
+    });
 
     $('#prod-save').addEventListener('click', async () => {
         const err = $('#product-modal-error');

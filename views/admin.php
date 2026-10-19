@@ -452,6 +452,10 @@
                 <label class="check"><input type="checkbox" id="upd-m-hassql"> Contains DB migrations (.sql) <small id="upd-m-sqlhint" style="color:var(--muted)"></small></label>
                 <label class="check"><input type="checkbox" id="upd-m-forced"> <b>Force update</b> — sites auto-apply, no manual click</label>
             </div>
+            <div id="upd-m-forceat-wrap" class="hidden">
+                <label>Force at <small style="color:var(--muted)">(blank = immediately — we push to every known site)</small></label>
+                <input type="datetime-local" id="upd-m-forceat">
+            </div>
             <label class="check" id="prod-publish-wrap"><input type="checkbox" id="prod-publish" checked> Publish as an update — feeds check_update / download_update</label>
         </div>
 
