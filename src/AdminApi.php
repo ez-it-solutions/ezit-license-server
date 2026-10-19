@@ -6,6 +6,9 @@ namespace EzIT\LicenseServer;
 
 use PDO;
 use PDOException;
+use RuntimeException;
+use Throwable;
+use ZipArchive;
 
 /**
  * Session-authenticated JSON API backing the admin dashboard SPA.
