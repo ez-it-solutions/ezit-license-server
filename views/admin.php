@@ -181,6 +181,8 @@
                     <label>Changelog (optional)</label><textarea id="upd-changelog" rows="3" spellcheck="false"></textarea>
                     <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="upd-hassql" style="width:auto"> Requires SQL migration (<code>has_sql</code>)</label>
                     <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="upd-forced" style="width:auto"> <b>Force update</b> — sites auto-apply on next check, no manual click</label>
+                    <label id="upd-forceat-wrap" class="hidden">Force at <small style="color:var(--muted)">(blank = immediately — we push to every known site)</small></label>
+                    <input type="datetime-local" id="upd-forceat" class="hidden">
                     <button class="btn btn-primary" type="submit" id="upd-btn">Publish update</button>
                 </form>
             </div>
@@ -476,6 +478,10 @@
         <div class="upd-flags">
             <label class="check"><input type="checkbox" id="ue-hassql"> Contains DB migrations (.sql)</label>
             <label class="check"><input type="checkbox" id="ue-forced"> <b>Force update</b> — sites auto-apply, no manual click</label>
+        </div>
+        <div id="ue-forceat-wrap" class="hidden">
+            <label>Force at <small style="color:var(--muted)">(blank = immediately — we push to every known site)</small></label>
+            <input type="datetime-local" id="ue-forceat">
         </div>
         <p class="hint">The package file is immutable — republish to swap the zip. Clearing Force retracts pending rollouts (sites re-check the flag before applying).</p>
         <div class="modal-actions">

@@ -720,7 +720,7 @@ final class AdminApi
     {
         $rows = $this->db->query(
             'SELECT u.id, u.update_id, u.version, u.summary, u.changelog,
-                    u.has_sql, u.forced, u.file_size, u.release_date, u.created_at,
+                    u.has_sql, u.forced, u.force_at, u.file_size, u.release_date, u.created_at,
                     p.name AS product_name, p.product_id AS product_code,
                     (u.file_path IS NOT NULL AND u.file_path <> \'\') AS has_file
              FROM updates u JOIN products p ON p.id = u.product_id
@@ -744,6 +744,7 @@ final class AdminApi
         $changelog = trim((string) ($_POST['changelog'] ?? '')) ?: null;
         $hasSql    = ! empty($_POST['has_sql']) ? 1 : 0;
         $forced    = ! empty($_POST['forced']) ? 1 : 0;
+        $forceAt   = self::forceAt($_POST['force_at'] ?? '');
         $file      = $_FILES['package'] ?? null;
 
         if ($productId <= 0 || $version === '') {
@@ -794,9 +795,9 @@ final class AdminApi
         }
 
         $this->db->prepare(
-            'INSERT INTO updates (product_id, update_id, version, summary, changelog, has_sql, forced, file_path, file_size, release_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, date(\'now\'))'
-        )->execute([$productId, $updateId, $version, $summary, $changelog, $hasSql, $forced, $dest, $size]);
+            'INSERT INTO updates (product_id, update_id, version, summary, changelog, has_sql, forced, force_at, file_path, file_size, release_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date(\'now\'))'
+        )->execute([$productId, $updateId, $version, $summary, $changelog, $hasSql, $forced, $forceAt, $dest, $size]);
 
         // get_config serves products.latest_version — keep it honest so the
         // bootstrap doc and check_update agree on what "newest" means.
@@ -807,6 +808,11 @@ final class AdminApi
 
         Database::log($this->db, 'admin_update_publish', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
             $product['name'] . ' ' . $version, true);
+
+        // Published forced-and-due → push every known site to apply now.
+        if ($forced && ($forceAt === null || strtotime($forceAt) <= time())) {
+            LicensePush::update($this->db, $productId, 'update forced ' . $version);
+        }
 
         $this->json(['data' => [
             'id'        => (int) $this->db->lastInsertId(),
@@ -1086,10 +1092,19 @@ final class AdminApi
         $changelog = array_key_exists('changelog', $b) ? (trim((string) $b['changelog']) ?: null) : $row['changelog'];
         $hasSql    = array_key_exists('has_sql', $b) ? (! empty($b['has_sql']) ? 1 : 0) : (int) $row['has_sql'];
         $forced    = array_key_exists('forced', $b)  ? (! empty($b['forced']) ? 1 : 0)  : (int) $row['forced'];
+        $forceAt   = array_key_exists('force_at', $b) ? self::forceAt($b['force_at']) : $row['force_at'];
 
         $this->db->prepare(
-            'UPDATE updates SET summary = ?, changelog = ?, has_sql = ?, forced = ? WHERE id = ?'
-        )->execute([$summary, $changelog, $hasSql, $forced, $id]);
+            'UPDATE updates SET summary = ?, changelog = ?, has_sql = ?, forced = ?, force_at = ? WHERE id = ?'
+        )->execute([$summary, $changelog, $hasSql, $forced, $forceAt, $id]);
+
+        // Force enabled AND due (or unscheduled) → update-push every known
+        // site now; they scan + apply within seconds. Future-dated
+        // rollouts ride the site's own scan until their time arrives.
+        $due = $forceAt === null || strtotime((string) $forceAt) <= time();
+        if ($forced && $due) {
+            LicensePush::update($this->db, (int) $row['product_id'], 'update forced ' . $row['version']);
+        }
 
         Database::log($this->db, 'admin_update_edit', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
             $row['product_name'] . ' ' . $row['version']
@@ -1097,6 +1112,18 @@ final class AdminApi
                : (! $forced && (int) $row['forced'] ? ' (forced off)' : '')), true);
 
         $this->json(['ok' => true]);
+    }
+
+    /** Normalize a force_at input ('Y-m-d\TH:i' from datetime-local, or
+     *  any strtotime-able string) to 'Y-m-d H:i:s' or null (immediate). */
+    private static function forceAt($v): ?string
+    {
+        $v = trim((string) $v);
+        if ($v === '') {
+            return null;
+        }
+        $ts = strtotime($v);
+        return $ts ? date('Y-m-d H:i:s', $ts) : null;
     }
 
     private function deleteUpdate(int $id): void

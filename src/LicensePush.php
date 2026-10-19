@@ -7,11 +7,13 @@ namespace EzIT\LicenseServer;
 use PDO;
 
 /**
- * Server → site push. Every site runs EzIT Core, which exposes
- * POST {site}/wp-json/ezit/v1/license-push?key={product api_key} to
- * force an immediate re-verify. Calling it whenever a license or
- * activation changes makes suspensions/revokes propagate in seconds
- * instead of at the site's next hourly cron.
+ * Server → site push. Every site runs EzIT Core, which exposes two
+ * endpoints (key = a product api_key):
+ *   POST {site}/wp-json/ezit/v1/license-push — immediate re-verify
+ *   POST {site}/wp-json/ezit/v1/update-push  — immediate update scan
+ *     (forced releases apply within seconds; EzIT Core ≥1.4.2)
+ * Calling them whenever a license, activation or forced update changes
+ * makes changes propagate in seconds instead of at the site's next cron.
  *
  * Best-effort AND non-blocking: mutation handlers only *queue*
  * targets; json() flushes the HTTP response first, then runs
@@ -20,12 +22,13 @@ use PDO;
  */
 final class LicensePush
 {
-    private const ENDPOINT = '/wp-json/ezit/v1/license-push';
+    private const ENDPOINT        = '/wp-json/ezit/v1/license-push';
+    private const ENDPOINT_UPDATE = '/wp-json/ezit/v1/update-push';
     private const TIMEOUT  = 5; // seconds per site
     /** Default per-flush cap — override via config['push_max_sites']. */
     private const MAX_SITE = 25;
 
-    /** @var array<int, array{site:string, key:string, license_id:?int, reason:string}> */
+    /** @var array<int, array{site:string, key:string, license_id:?int, reason:string, path:string}> */
     private static array $queue = [];
 
     /** Queue every site with an activation on this license. */
@@ -40,7 +43,7 @@ final class LicensePush
         );
         $stmt->execute([$licenseId]);
         foreach ($stmt->fetchAll() as $t) {
-            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => $licenseId, 'reason' => $reason];
+            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => $licenseId, 'reason' => $reason, 'path' => self::ENDPOINT];
         }
     }
 
@@ -58,7 +61,54 @@ final class LicensePush
         );
         $stmt->execute([$productDbId]);
         foreach ($stmt->fetchAll() as $t) {
-            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => (int) $t['license_id'], 'reason' => $reason];
+            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => (int) $t['license_id'], 'reason' => $reason, 'path' => self::ENDPOINT];
+        }
+        self::registry($db, $productDbId, $reason);
+    }
+
+    /** Queue every site recorded in product_sites — sites that call
+     *  check_update but never activated a license (free catalog items,
+     *  the self product EzIT Core). Update pushes depend on this. */
+    public static function registry(PDO $db, int $productDbId, string $reason): void
+    {
+        $stmt = $db->prepare(
+            'SELECT DISTINCT ps.site_url, p.api_key
+             FROM product_sites ps
+             JOIN products p ON p.id = ps.product_id
+             WHERE ps.product_id = ? AND ps.site_url != \'\''
+        );
+        $stmt->execute([$productDbId]);
+        foreach ($stmt->fetchAll() as $t) {
+            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => null, 'reason' => $reason, 'path' => self::ENDPOINT];
+        }
+    }
+
+    /** Queue an update-push for every known site on this product —
+     *  activations AND the product_sites registry — when a forced
+     *  release goes live. */
+    public static function update(PDO $db, int $productDbId, string $reason): void
+    {
+        $stmt = $db->prepare(
+            'SELECT DISTINCT a.site_url, p.api_key, a.license_id
+             FROM activations a
+             JOIN licenses l ON l.id = a.license_id
+             JOIN products p ON p.id = l.product_id
+             WHERE l.product_id = ? AND a.site_url IS NOT NULL AND a.site_url != \'\''
+        );
+        $stmt->execute([$productDbId]);
+        foreach ($stmt->fetchAll() as $t) {
+            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => (int) $t['license_id'], 'reason' => $reason, 'path' => self::ENDPOINT_UPDATE];
+        }
+
+        $stmt = $db->prepare(
+            'SELECT DISTINCT ps.site_url, p.api_key
+             FROM product_sites ps
+             JOIN products p ON p.id = ps.product_id
+             WHERE ps.product_id = ? AND ps.site_url != \'\''
+        );
+        $stmt->execute([$productDbId]);
+        foreach ($stmt->fetchAll() as $t) {
+            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => null, 'reason' => $reason, 'path' => self::ENDPOINT_UPDATE];
         }
     }
 
@@ -74,7 +124,7 @@ final class LicensePush
              WHERE a.site_url IS NOT NULL AND a.site_url != \'\''
         );
         foreach ($stmt->fetchAll() as $t) {
-            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => (int) $t['license_id'], 'reason' => $reason];
+            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => (int) $t['license_id'], 'reason' => $reason, 'path' => self::ENDPOINT];
         }
     }
 
@@ -92,7 +142,7 @@ final class LicensePush
         $row = $stmt->fetch();
 
         if ($row && $row['site_url']) {
-            self::$queue[] = ['site' => $row['site_url'], 'key' => $row['api_key'], 'license_id' => (int) $row['license_id'], 'reason' => $reason];
+            self::$queue[] = ['site' => $row['site_url'], 'key' => $row['api_key'], 'license_id' => (int) $row['license_id'], 'reason' => $reason, 'path' => self::ENDPOINT];
         }
     }
 
@@ -112,12 +162,16 @@ final class LicensePush
 
         foreach (self::$queue as $t) {
             $site = rtrim((string) $t['site'], '/');
-            if ($site === '' || isset($seen[$site]) || count($seen) >= $max) {
+            $path = (string) ($t['path'] ?? self::ENDPOINT);
+            // Dedupe per site+endpoint — an update push and a license
+            // push to the same site are both worth sending.
+            $dedupe = $site . '|' . $path;
+            if ($site === '' || isset($seen[$dedupe]) || count($seen) >= $max) {
                 continue;
             }
-            $seen[$site] = true;
+            $seen[$dedupe] = true;
 
-            $ok = self::send($site, (string) $t['key']);
+            $ok = self::send($site, (string) $t['key'], $path);
 
             Database::log(
                 $db,
@@ -133,7 +187,7 @@ final class LicensePush
         self::$queue = [];
     }
 
-    private static function send(string $site, string $apiKey): bool
+    private static function send(string $site, string $apiKey, string $path = self::ENDPOINT): bool
     {
         // site_url is client-declared (LB-URL) — only ever POST a key to
         // plain http/https endpoints. Anything else (file://, gopher://,
@@ -143,7 +197,7 @@ final class LicensePush
             return false;
         }
 
-        $url = $site . self::ENDPOINT;
+        $url = $site . $path;
         $body = http_build_query(['key' => $apiKey]);
 
         if (function_exists('curl_init')) {
@@ -158,7 +212,7 @@ final class LicensePush
                 // body to the *redirected* host, which the site owner
                 // controls. Moved sites converge via cron instead.
                 CURLOPT_FOLLOWLOCATION => false,
-                CURLOPT_USERAGENT      => 'EzIT-LicenseServer/1.1',
+                CURLOPT_USERAGENT      => 'EzIT-LicenseServer/1.2',
             ]);
             curl_exec($ch);
             $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS updates (
     changelog    TEXT DEFAULT NULL,
     has_sql      INTEGER NOT NULL DEFAULT 0,
     forced       INTEGER NOT NULL DEFAULT 0,        -- 1 = sites auto-apply without a manual click
+    force_at     DATETIME DEFAULT NULL,            -- forced rollout not before this time; NULL = immediately
     file_path    VARCHAR(255) DEFAULT NULL,        -- path to update zip on this server
     file_size    INTEGER NOT NULL DEFAULT 0,
     release_date DATE NOT NULL,
@@ -178,6 +179,17 @@ CREATE TABLE IF NOT EXISTS catalog_items (
     license_scope TEXT DEFAULT NULL,             -- NULL = public; JSON array of license codes = only those licensees see/install it
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+/* Sites that call check_update for a product — including unlicensed
+   installs and self products (EzIT Core) that never activate a license.
+   Feeds LicensePush so forced updates reach every known site. */
+CREATE TABLE IF NOT EXISTS product_sites (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id   INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    site_url     VARCHAR(255) NOT NULL,            -- full LB-URL
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (product_id, site_url)
 );
 
 CREATE TABLE IF NOT EXISTS site_logins (
@@ -244,6 +256,13 @@ SQL);
         // auto-apply instead of waiting for a manual update click.
         try {
             $pdo->exec('ALTER TABLE updates ADD COLUMN forced INTEGER NOT NULL DEFAULT 0');
+        } catch (PDOException) {
+            // column already exists
+        }
+
+        // updates.force_at — schedule a forced rollout; NULL = immediate.
+        try {
+            $pdo->exec('ALTER TABLE updates ADD COLUMN force_at DATETIME DEFAULT NULL');
         } catch (PDOException) {
             // column already exists
         }

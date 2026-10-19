@@ -323,6 +323,24 @@ final class LicenseApi
         $body = $this->body();
         $current = (string) ($body['current_version'] ?? '0.0.0');
 
+        // Every check declares LB-URL — keep a per-product site registry
+        // so LicensePush reaches installs that never activate a license
+        // (free catalog items, self products like EzIT Core). Best-effort:
+        // a registry hiccup must never break update checks.
+        if ($site = $this->siteUrl()) {
+            try {
+                $q = $this->db->prepare('SELECT id FROM product_sites WHERE product_id = ? AND site_url = ?');
+                $q->execute([(int) $product['id'], $site]);
+                if ($sid = $q->fetchColumn()) {
+                    $this->db->prepare('UPDATE product_sites SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?')
+                        ->execute([$sid]);
+                } else {
+                    $this->db->prepare('INSERT INTO product_sites (product_id, site_url) VALUES (?, ?)')
+                        ->execute([(int) $product['id'], $site]);
+                }
+            } catch (\PDOException) { /* registry is best-effort */ }
+        }
+
         $stmt = $this->db->prepare(
             'SELECT * FROM updates WHERE product_id = ? ORDER BY release_date DESC, id DESC LIMIT 1'
         );
@@ -343,7 +361,11 @@ final class LicenseApi
             'summary' => $update['summary'],
             'changelog' => $update['changelog'],
             'has_sql' => (bool) $update['has_sql'],
-            'forced' => (bool) ($update['forced'] ?? 0),
+            // Forced, and past its scheduled time (NULL = immediately) —
+            // a future force_at still reports the update, just not forced.
+            'forced' => ! empty($update['forced'])
+                && ((string) ($update['force_at'] ?? '') === ''
+                    || strtotime((string) $update['force_at']) <= time()),
             'config_version' => $this->configVersion(),
         ]);
     }
