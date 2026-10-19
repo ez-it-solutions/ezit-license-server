@@ -478,6 +478,49 @@
     </div>
 </div>
 
+<!-- ─────────────── Client-site login modal ─────────────── -->
+<div id="sitelogin-modal" class="modal hidden">
+    <div class="modal-card">
+        <h2>Log in to <span id="sl-domain" class="mono"></span></h2>
+        <div id="sitelogin-error" class="alert hidden"></div>
+
+        <button class="btn btn-primary" id="sl-first-admin" style="align-self:flex-start">Log in as first admin</button>
+        <p class="hint" style="margin-top:0">Opens a one-time link for the site's first administrator account — no password needed.</p>
+
+        <h3 class="sl-h">Site users <button type="button" class="btn btn-ghost btn-sm" id="sl-users-reload">Refresh</button></h3>
+        <div id="sl-users"><p class="hint">Loading…</p></div>
+
+        <h3 class="sl-h">Saved logins</h3>
+        <div id="sl-saved"><p class="hint">None saved for this site.</p></div>
+
+        <h3 class="sl-h">Log in with credentials</h3>
+        <div class="grid2">
+            <div><label>Username</label><input id="sl-user" autocomplete="off"></div>
+            <div><label>Password</label><input id="sl-pass" type="password" autocomplete="off"></div>
+        </div>
+        <label class="check"><input type="checkbox" id="sl-remember"> Remember this login on the server (encrypted)</label>
+        <div class="modal-actions" style="justify-content:flex-start">
+            <button class="btn" id="sl-cred-login">Log in</button>
+        </div>
+
+        <h3 class="sl-h">Push an account onto the site</h3>
+        <p class="hint" style="margin-top:0">Creates (or resets the password of) a WordPress user with the chosen role, then logs you in as it.</p>
+        <div class="grid3">
+            <div><label>Username</label><input id="sl-p-user" autocomplete="off"></div>
+            <div><label>Password</label><input id="sl-p-pass" type="password" placeholder="Min 8 chars" autocomplete="new-password"></div>
+            <div><label>Email</label><input id="sl-p-email" type="email" placeholder="optional"></div>
+        </div>
+        <div class="grid2">
+            <div><label>Role</label><select id="sl-p-role"><option value="administrator">administrator</option></select></div>
+            <div><label>&nbsp;</label><label class="check"><input type="checkbox" id="sl-p-remember"> Remember this login</label></div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" data-close>Close</button>
+            <button class="btn btn-primary" id="sl-provision">Create &amp; log in</button>
+        </div>
+    </div>
+</div>
+
 <div id="toast" class="toast hidden"></div>
 <script src="/assets/js/admin.js?v=<?= filemtime(__DIR__ . '/../assets/js/admin.js') ?>"></script>
 </body>

@@ -918,11 +918,133 @@
                 <td data-sort="${esc(a.activated_at)}">${ago(a.activated_at)}</td>
                 <td data-sort="${esc(a.last_check_at)}">${ago(a.last_check_at)}</td>
                 <td><div class="row-actions">
+                    <button class="btn" data-domain="${esc(a.domain)}" onclick="EZL.openSiteLogin(${a.id}, this.dataset.domain)">Log in</button>
                     <button class="btn" onclick="EZL.toggleActivation(${a.id}, '${a.status || 'enabled'}')">${(a.status || 'enabled') === 'enabled' ? 'Disable' : 'Enable'}</button>
                     <button class="btn btn-danger" onclick="EZL.deleteActivation(${a.id})">Revoke</button>
                 </div></td></tr>`).join('')
             : '<tr><td colspan="9" class="empty">No activations yet</td></tr>';
     }
+
+    /* ── client-site login (SSO) ── */
+    let slActivation = 0;
+
+    const slError = (msg) => {
+        const el = $('#sitelogin-error');
+        el.textContent = msg || '';
+        el.classList.toggle('hidden', !msg);
+    };
+
+    window.EZL.openSiteLogin = (activationId, domain) => {
+        slActivation = activationId;
+        $('#sl-domain').textContent = domain;
+        slError('');
+        ['#sl-user', '#sl-pass', '#sl-p-user', '#sl-p-pass', '#sl-p-email'].forEach((id) => { $(id).value = ''; });
+        $('#sl-remember').checked = false;
+        $('#sl-p-remember').checked = false;
+        $('#sitelogin-modal').classList.remove('hidden');
+        loadSiteUsers();
+        loadSiteLogins();
+    };
+
+    /** POST site-login → open the returned one-time URL in a new tab. */
+    async function siteLogin(params, btn) {
+        slError('');
+        const prev = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="btn-spin"></span> Contacting site…';
+        try {
+            const r = await api('site-login', {
+                method: 'POST',
+                body: { activation_id: slActivation, ...params },
+            });
+            window.open(r.data.login_url, '_blank', 'noopener');
+            if (params.remember) loadSiteLogins();
+        } catch (e) {
+            slError(e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = prev;
+        }
+    }
+
+    /** Site's WP users — the "Log in as" picker. */
+    async function loadSiteUsers() {
+        const box = $('#sl-users');
+        box.innerHTML = '<p class="hint">Loading…</p>';
+        try {
+            const r = await api('site-users?activation=' + slActivation);
+            box.innerHTML = r.data.length
+                ? r.data.map((u) => `<div class="sl-row">
+                    <span><strong>${esc(u.login)}</strong>${u.display && u.display !== u.login ? ` <small style="color:var(--muted)">${esc(u.display)}</small>` : ''}<br>
+                    <small style="color:var(--muted)">${esc((u.roles || []).join(', ') || 'no role')}</small></span>
+                    <button class="btn btn-sm" data-uid="${u.id}">Log in</button>
+                </div>`).join('')
+                : '<p class="hint">No users found.</p>';
+            box.querySelectorAll('[data-uid]').forEach((b) =>
+                b.addEventListener('click', () => siteLogin({ mode: 'user', user_id: +b.dataset.uid }, b)));
+        } catch (e) {
+            box.innerHTML = `<p class="hint">${esc(e.message)}</p>`;
+        }
+    }
+
+    /** Saved (encrypted) credentials for this activation. */
+    async function loadSiteLogins() {
+        const box = $('#sl-saved');
+        try {
+            const r = await api('site-logins?activation=' + slActivation);
+            box.innerHTML = r.data.length
+                ? r.data.map((c) => `<div class="sl-row">
+                    <span><strong>${esc(c.username)}</strong>${c.label ? ` <small style="color:var(--muted)">${esc(c.label)}</small>` : ''}<br>
+                    <small class="mono" id="sl-pass-${c.id}" style="color:var(--muted)">••••••••</small></span>
+                    <span class="row-actions">
+                        <button class="btn btn-sm" data-slogin="${c.id}">Log in</button>
+                        <button class="btn btn-ghost btn-sm" data-reveal="${c.id}">Reveal</button>
+                        <button class="btn btn-danger btn-sm" data-sdel="${c.id}">Delete</button>
+                    </span>
+                </div>`).join('')
+                : '<p class="hint">None saved for this site.</p>';
+
+            box.querySelectorAll('[data-slogin]').forEach((b) =>
+                b.addEventListener('click', () => siteLogin({ mode: 'credentials', credential_id: +b.dataset.slogin }, b)));
+            box.querySelectorAll('[data-reveal]').forEach((b) =>
+                b.addEventListener('click', async () => {
+                    try {
+                        const r = await api('site-logins/' + b.dataset.reveal + '/reveal', { method: 'POST' });
+                        $('#sl-pass-' + b.dataset.reveal).textContent = r.data.password;
+                    } catch (e) { slError(e.message); }
+                }));
+            box.querySelectorAll('[data-sdel]').forEach((b) =>
+                b.addEventListener('click', async () => {
+                    if (!await askConfirm('Forget this saved login? (The account on the site is untouched.)', 'Delete')) return;
+                    try {
+                        await api('site-logins/' + b.dataset.sdel, { method: 'DELETE' });
+                        loadSiteLogins();
+                    } catch (e) { slError(e.message); }
+                }));
+        } catch (e) {
+            box.innerHTML = `<p class="hint">${esc(e.message)}</p>`;
+        }
+    }
+
+    $('#sl-first-admin').addEventListener('click', (e) =>
+        siteLogin({ mode: 'first_admin' }, e.currentTarget));
+    $('#sl-users-reload').addEventListener('click', loadSiteUsers);
+    $('#sl-cred-login').addEventListener('click', (e) =>
+        siteLogin({
+            mode: 'credentials',
+            username: $('#sl-user').value.trim(),
+            password: $('#sl-pass').value,
+            remember: $('#sl-remember').checked ? 1 : 0,
+        }, e.currentTarget));
+    $('#sl-provision').addEventListener('click', (e) =>
+        siteLogin({
+            mode: 'provision',
+            username: $('#sl-p-user').value.trim(),
+            password: $('#sl-p-pass').value,
+            email: $('#sl-p-email').value.trim(),
+            role: $('#sl-p-role').value,
+            remember: $('#sl-p-remember').checked ? 1 : 0,
+        }, e.currentTarget));
 
     /* ── products ── */
     let editingProduct = null;

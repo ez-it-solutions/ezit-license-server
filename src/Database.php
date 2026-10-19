@@ -179,6 +179,16 @@ CREATE TABLE IF NOT EXISTS catalog_items (
     updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS site_logins (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    activation_id INTEGER NOT NULL REFERENCES activations(id) ON DELETE CASCADE,
+    label         VARCHAR(120) NOT NULL DEFAULT '',  -- admin-facing note (e.g. "Client's own login")
+    username      VARCHAR(190) NOT NULL,
+    password_enc  TEXT NOT NULL,                     -- AES-256-GCM, keyed by server_secret (SiteLogin::seal)
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (activation_id, username)
+);
+
 CREATE TABLE IF NOT EXISTS log_rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     action      VARCHAR(64) NOT NULL,            -- activity_logs.action or '*' catch-all
@@ -270,6 +280,15 @@ SQL);
         foreach ($missing as $row) {
             $code = self::generateRecoveryCode();
             $upd2->execute([self::recoveryCodeHash($code), self::recoveryDigestFor($code, $row['api_key']), $row['id']]);
+        }
+
+        // admins.role — future roles & permissions. 'super_admin' sees
+        // everything; other roles will map to capability names checked via
+        // AdminApi::can() (e.g. 'site_login' for the client-site SSO tools).
+        try {
+            $pdo->exec("ALTER TABLE admins ADD COLUMN role VARCHAR(32) NOT NULL DEFAULT 'super_admin'");
+        } catch (PDOException) {
+            // column already exists
         }
 
         // Seed the bootstrap config (v1) so /api/get_config always has a

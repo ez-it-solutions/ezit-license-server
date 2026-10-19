@@ -78,6 +78,12 @@ final class AdminApi
             $resource === 'config' && $method === 'GET' => $this->getConfig(),
             $resource === 'config' && $method === 'POST' => $this->publishConfig(),
             $resource === 'account' && $method === 'PUT' => $this->updateAccount(),
+            $path === 'site-users' && $method === 'GET' => $this->siteUsers(),
+            $path === 'site-login' && $method === 'POST' => $this->siteLogin(),
+            $resource === 'site-logins' && $method === 'GET' && ! $id => $this->listSiteLogins(),
+            $resource === 'site-logins' && $method === 'POST' && ! $id => $this->createSiteLogin(),
+            $resource === 'site-logins' && $id && $sub === 'reveal' && $method === 'POST' => $this->revealSiteLogin((int) $id),
+            $resource === 'site-logins' && $method === 'DELETE' && $id => $this->deleteSiteLogin((int) $id),
             $path === 'maintenance' && $method === 'GET' => $this->getMaintenance(),
             $path === 'maintenance' && $method === 'PUT' => $this->setMaintenance(),
             $path === 'settings' && $method === 'GET' => $this->getSettings(),
@@ -116,13 +122,14 @@ final class AdminApi
         }
 
         session_regenerate_id(true);
-        $_SESSION['admin_id'] = $admin['id'];
+        $_SESSION['admin_id']   = $admin['id'];
+        $_SESSION['admin_role'] = $admin['role'] ?? 'super_admin';
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
 
         Database::log($this->db, 'admin_login', null, null, $_SERVER['REMOTE_ADDR'] ?? null, $email, true);
 
         $this->json([
-            'admin' => ['id' => $admin['id'], 'name' => $admin['name'], 'email' => $admin['email']],
+            'admin' => ['id' => $admin['id'], 'name' => $admin['name'], 'email' => $admin['email'], 'role' => $admin['role'] ?? 'super_admin'],
             'csrf' => $_SESSION['csrf'],
         ]);
     }
@@ -133,12 +140,14 @@ final class AdminApi
             $this->json(['authenticated' => false]);
         }
 
-        $stmt = $this->db->prepare('SELECT id, name, email FROM admins WHERE id = ?');
+        $stmt = $this->db->prepare('SELECT id, name, email, role FROM admins WHERE id = ?');
         $stmt->execute([$_SESSION['admin_id']]);
+        $admin = $stmt->fetch();
+        $_SESSION['admin_role'] = $admin['role'] ?? 'super_admin'; // keep session fresh if the column changes later
 
         $this->json([
             'authenticated' => true,
-            'admin' => $stmt->fetch(),
+            'admin' => $admin,
             'csrf' => $_SESSION['csrf'] ?? ($_SESSION['csrf'] = bin2hex(random_bytes(32))),
         ]);
     }
@@ -154,6 +163,37 @@ final class AdminApi
     {
         if (empty($_SESSION['admin_id'])) {
             $this->json(['error' => 'Unauthenticated'], 401);
+        }
+    }
+
+    /**
+     * Role → capabilities map. 'super_admin' implicitly has every cap;
+     * future roles (staff, support…) grant named caps here — endpoint
+     * handlers call requireCap() so adding a role is a one-line change.
+     */
+    private const ROLE_CAPS = [
+        // 'staff' => ['site_login_support'], // e.g. support-only logins
+    ];
+
+    private function adminRole(): string
+    {
+        return (string) ($_SESSION['admin_role'] ?? 'super_admin');
+    }
+
+    private function can(string $cap): bool
+    {
+        $role = $this->adminRole();
+        if ($role === 'super_admin') {
+            return true;
+        }
+
+        return in_array($cap, self::ROLE_CAPS[$role] ?? [], true);
+    }
+
+    private function requireCap(string $cap): void
+    {
+        if (! $this->can($cap)) {
+            $this->json(['error' => 'Your role does not allow this action.'], 403);
         }
     }
 
@@ -1188,6 +1228,218 @@ final class AdminApi
     public static function generateRecoveryCode(): string
     {
         return Database::generateRecoveryCode();
+    }
+
+    /* ─────────────────── client-site login (SSO) ───────────────────
+     *
+     * All routes require the 'site_login' capability — super_admin today;
+     * future roles can grant narrower caps (e.g. support-mode only) via
+     * ROLE_CAPS without touching these handlers.
+     */
+
+    /** GET site-users?activation=N — fetch the site's user list. */
+    private function siteUsers(): void
+    {
+        $this->requireCap('site_login');
+
+        $target = SiteLogin::target($this->db, (int) ($_GET['activation'] ?? 0));
+        if (! $target) {
+            $this->json(['error' => 'Unknown or unreachable activation.'], 404);
+        }
+        [$site, $apiKey] = $target;
+
+        $res = SiteLogin::users($site, $apiKey);
+        if ($res['error'] !== null) {
+            $this->json(['error' => $res['error']], 502);
+        }
+
+        $this->json(['data' => $res['users']]);
+    }
+
+    /**
+     * POST site-login — { activation_id, mode, … } → { login_url }.
+     *
+     * modes:
+     *   first_admin — one-time URL for the site's first administrator
+     *   user        — one-time URL for user_id ("log in as" any account)
+     *   credentials — verify username+password on the site; optional
+     *                 credential_id resolves a remembered login, optional
+     *                 remember+label encrypts and stores it
+     *   provision   — create/reset a WP user (role, default administrator)
+     */
+    private function siteLogin(): void
+    {
+        $this->requireCap('site_login');
+
+        $b = $this->body();
+        $activationId = (int) ($b['activation_id'] ?? 0);
+        $mode = (string) ($b['mode'] ?? 'first_admin');
+
+        $target = SiteLogin::target($this->db, $activationId);
+        if (! $target) {
+            $this->json(['error' => 'Unknown or unreachable activation.'], 404);
+        }
+        [$site, $apiKey, $domain] = $target;
+
+        $params = match ($mode) {
+            'first_admin' => ['action' => 'token', 'mode' => 'first_admin'],
+            'user' => ['action' => 'token', 'mode' => 'user', 'user_id' => (int) ($b['user_id'] ?? 0)],
+            'credentials' => $this->credentialParams($b, $activationId),
+            'provision' => $this->provisionParams($b),
+            default => $this->json(['error' => 'Unknown login mode.'], 422),
+        };
+
+        // Remember-me vault — store an encrypted copy after a successful
+        // call so we never park a wrong password.
+        $remember = ! empty($b['remember'])
+            && in_array($mode, ['credentials', 'provision'], true);
+        $rememberUser = trim((string) ($b['username'] ?? ''));
+        $rememberPass = (string) ($b['password'] ?? '');
+
+        $res = SiteLogin::token($site, $apiKey, $params);
+        if ($res['error'] !== null) {
+            Database::log($this->db, 'admin_site_login', null, $domain, null, $mode . ' failed: ' . $res['error'], false);
+            $this->json(['error' => $res['error']], 502);
+        }
+
+        if ($remember && $rememberUser !== '' && $rememberPass !== '') {
+            $this->db->prepare(
+                'INSERT INTO site_logins (activation_id, label, username, password_enc) VALUES (?, ?, ?, ?)
+                 ON CONFLICT (activation_id, username) DO UPDATE SET label = excluded.label, password_enc = excluded.password_enc'
+            )->execute([
+                $activationId,
+                trim((string) ($b['label'] ?? '')),
+                $rememberUser,
+                SiteLogin::seal($this->config['server_secret'], $rememberPass),
+            ]);
+        }
+
+        Database::log($this->db, 'admin_site_login', null, $domain, null,
+            $mode . ' by admin ' . ($_SESSION['admin_id'] ?? '?'), true);
+
+        $this->json(['data' => ['login_url' => $res['login_url']]]);
+    }
+
+    /** @return array<string,mixed> params for mode=credentials (exits 4xx on bad input). */
+    private function credentialParams(array $b, int $activationId): array
+    {
+        // Saved credential wins over typed fields when an id is passed.
+        if (! empty($b['credential_id'])) {
+            $stmt = $this->db->prepare(
+                'SELECT * FROM site_logins WHERE id = ? AND activation_id = ?'
+            );
+            $stmt->execute([(int) $b['credential_id'], $activationId]);
+            $row = $stmt->fetch();
+            if (! $row) {
+                $this->json(['error' => 'Saved login not found.'], 404);
+            }
+            $pass = SiteLogin::open($this->config['server_secret'], (string) $row['password_enc']);
+            if ($pass === null) {
+                $this->json(['error' => 'Saved login cannot be decrypted — re-save it.'], 500);
+            }
+            return ['action' => 'token', 'mode' => 'credentials',
+                    'username' => $row['username'], 'password' => $pass];
+        }
+
+        $user = trim((string) ($b['username'] ?? ''));
+        $pass = (string) ($b['password'] ?? '');
+        if ($user === '' || $pass === '') {
+            $this->json(['error' => 'Username and password are required.'], 422);
+        }
+
+        return ['action' => 'token', 'mode' => 'credentials',
+                'username' => $user, 'password' => $pass];
+    }
+
+    /** @return array<string,mixed> params for mode=provision. */
+    private function provisionParams(array $b): array
+    {
+        $user = trim((string) ($b['username'] ?? ''));
+        $pass = (string) ($b['password'] ?? '');
+        if ($user === '' || strlen($pass) < 8) {
+            $this->json(['error' => 'Username required; password must be at least 8 characters.'], 422);
+        }
+
+        return ['action' => 'provision',
+                'username' => $user,
+                'password' => $pass,
+                'email'    => trim((string) ($b['email'] ?? '')),
+                // Role is client-resolved — 'administrator' today, custom
+                // roles (support, staff…) pass straight through later.
+                'role'     => trim((string) ($b['role'] ?? 'administrator')) ?: 'administrator'];
+    }
+
+    /** GET site-logins?activation=N — remembered usernames (never passwords). */
+    private function listSiteLogins(): void
+    {
+        $this->requireCap('site_login');
+        $activationId = (int) ($_GET['activation'] ?? 0);
+
+        $stmt = $this->db->prepare(
+            'SELECT id, activation_id, label, username, created_at
+             FROM site_logins WHERE activation_id = ? ORDER BY username'
+        );
+        $stmt->execute([$activationId]);
+
+        $this->json(['data' => $stmt->fetchAll()]);
+    }
+
+    /** POST site-logins — save a credential without logging in. */
+    private function createSiteLogin(): void
+    {
+        $this->requireCap('site_login');
+        $b = $this->body();
+
+        $activationId = (int) ($b['activation_id'] ?? 0);
+        $username = trim((string) ($b['username'] ?? ''));
+        $password = (string) ($b['password'] ?? '');
+        if (! SiteLogin::target($this->db, $activationId) || $username === '' || $password === '') {
+            $this->json(['error' => 'activation_id, username and password are required.'], 422);
+        }
+
+        $this->db->prepare(
+            'INSERT INTO site_logins (activation_id, label, username, password_enc) VALUES (?, ?, ?, ?)
+             ON CONFLICT (activation_id, username) DO UPDATE SET label = excluded.label, password_enc = excluded.password_enc'
+        )->execute([
+            $activationId,
+            trim((string) ($b['label'] ?? '')),
+            $username,
+            SiteLogin::seal($this->config['server_secret'], $password),
+        ]);
+
+        $this->json(['data' => ['id' => (int) $this->db->lastInsertId()]], 201);
+    }
+
+    /** POST site-logins/{id}/reveal — decrypt for display (audited). */
+    private function revealSiteLogin(int $id): void
+    {
+        $this->requireCap('site_login');
+
+        $stmt = $this->db->prepare(
+            'SELECT s.*, a.domain FROM site_logins s JOIN activations a ON a.id = s.activation_id WHERE s.id = ?'
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (! $row) {
+            $this->json(['error' => 'Saved login not found.'], 404);
+        }
+
+        $plain = SiteLogin::open($this->config['server_secret'], (string) $row['password_enc']);
+        if ($plain === null) {
+            $this->json(['error' => 'Cannot decrypt — re-save this login.'], 500);
+        }
+
+        Database::log($this->db, 'admin_site_login_reveal', null, (string) $row['domain'], null,
+            'revealed ' . $row['username'] . ' (admin ' . ($_SESSION['admin_id'] ?? '?') . ')', true);
+
+        $this->json(['data' => ['username' => $row['username'], 'password' => $plain]]);
+    }
+
+    private function deleteSiteLogin(int $id): void
+    {
+        $this->requireCap('site_login');
+        $this->db->prepare('DELETE FROM site_logins WHERE id = ?')->execute([$id]);
+        $this->json(['ok' => true]);
     }
 
     private function body(): array
