@@ -918,11 +918,25 @@
                 <td data-sort="${esc(a.activated_at)}">${ago(a.activated_at)}</td>
                 <td data-sort="${esc(a.last_check_at)}">${ago(a.last_check_at)}</td>
                 <td><div class="row-actions">
-                    <button class="btn" data-domain="${esc(a.domain)}" onclick="EZL.openSiteLogin(${a.id}, this.dataset.domain)">Log in</button>
+                    <span data-sllogin="${a.id}" data-domain="${esc(a.domain)}"></span>
                     <button class="btn" onclick="EZL.toggleActivation(${a.id}, '${a.status || 'enabled'}')">${(a.status || 'enabled') === 'enabled' ? 'Disable' : 'Enable'}</button>
                     <button class="btn btn-danger" onclick="EZL.deleteActivation(${a.id})">Revoke</button>
                 </div></td></tr>`).join('')
             : '<tr><td colspan="9" class="empty">No activations yet</td></tr>';
+        probeSiteLogins();
+    }
+
+    /** Reveal 'Log in' only for sites running EzIT Core >=1.3.0 — each
+     *  row gets a signed probe; a 404 on the site's sso route (old
+     *  plugin) or an unreachable site leaves the button hidden. */
+    function probeSiteLogins() {
+        $$('[data-sllogin]').forEach(async (slot) => {
+            try {
+                const r = await api('site-login-capable?activation=' + slot.dataset.sllogin);
+                if (!r.data.capable) return;
+                slot.innerHTML = `<button class="btn" onclick="EZL.openSiteLogin(${+slot.dataset.sllogin}, '${esc(slot.dataset.domain)}')">Log in</button>`;
+            } catch { /* probe failed — stay hidden */ }
+        });
     }
 
     /* ── client-site login (SSO) ── */

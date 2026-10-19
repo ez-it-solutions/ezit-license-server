@@ -79,6 +79,7 @@ final class AdminApi
             $resource === 'config' && $method === 'POST' => $this->publishConfig(),
             $resource === 'account' && $method === 'PUT' => $this->updateAccount(),
             $path === 'site-users' && $method === 'GET' => $this->siteUsers(),
+            $path === 'site-login-capable' && $method === 'GET' => $this->siteLoginCapable(),
             $path === 'site-login' && $method === 'POST' => $this->siteLogin(),
             $resource === 'site-logins' && $method === 'GET' && ! $id => $this->listSiteLogins(),
             $resource === 'site-logins' && $method === 'POST' && ! $id => $this->createSiteLogin(),
@@ -1254,6 +1255,25 @@ final class AdminApi
         }
 
         $this->json(['data' => $res['users']]);
+    }
+
+    /**
+     * GET site-login-capable?activation=N — probe whether the site runs
+     * EzIT Core >=1.3.0 (sso routes live). The UI hides the "Log in"
+     * button when this reports false, so a probe is cheap: unsigned GET,
+     * route-existence check, no key sent.
+     */
+    private function siteLoginCapable(): void
+    {
+        $this->requireCap('site_login');
+
+        $target = SiteLogin::target($this->db, (int) ($_GET['activation'] ?? 0));
+        if (! $target) {
+            $this->json(['data' => ['capable' => false]]);
+        }
+        [$site] = $target;
+
+        $this->json(['data' => ['capable' => SiteLogin::capable($site)]]);
     }
 
     /**

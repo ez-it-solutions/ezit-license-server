@@ -55,6 +55,18 @@ Token mechanics: `user_meta ezit_sso_tokens = [sha256(token) => expiry]`
 consumes it on `init`: `hash_equals` + expiry check → `wp_set_auth_cookie`
 → `admin_url()`.
 
+## Capability detection
+
+Sites running EzIT Core <1.3.0 have no `sso/*` routes, so the server
+probes before offering the feature: an **unsigned** GET on
+`sso/users` — the route only exists when `EzIT_Sso` is active. A genuine
+404 means "old plugin"; any other status (401/403/200) means the
+endpoint is live (auth correctly demanded — no key is sent on the
+probe). An unreachable site reports not-capable too, since login would
+fail anyway.login-capable?activation=N` | Capability probe — `{capable: bool}`. The Activations table calls this per row and only renders **Log in** when true |
+| `GET site- The Activations table probes each row and hides the
+**Log in** button when the answer is no.
+
 ## Server endpoints (`/admin-api/*`)
 
 All require a session + CSRF and the **`site_login` capability**
@@ -63,6 +75,7 @@ via `ROLE_CAPS`).
 
 | Route | Purpose |
 |---|---|
+| `GET site-login-capable?activation=N` | Capability probe — `{capable: bool}`. The Activations table calls this per row and only renders **Log in** when true |
 | `GET site-users?activation=N` | Proxy the site's user list |
 | `POST site-login` | `{activation_id, mode, …}` → `{login_url}` |
 | `GET site-logins?activation=N` | Saved logins (usernames only — never passwords) |

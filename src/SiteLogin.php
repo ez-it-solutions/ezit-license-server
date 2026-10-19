@@ -165,7 +165,46 @@ final class SiteLogin
         return ['login_url' => (string) $data['login_url'], 'error' => null];
     }
 
-    /* ── transport ────────────────────────────────────────────────── */
+    /**
+     * Capability probe — does this site run EzIT Core >=1.3.0? An
+     * unsigned GET on sso/users: the route only exists when the SSO
+     * module is present, so a genuine 404 means "old plugin" while
+     * 401/403/200 mean the endpoint is live (auth correctly demanded).
+     * status 0 (unreachable) also reports false — the button would be
+     * dead either way.
+     */
+    public static function capable(string $site): bool
+    {
+        $url = $site . self::ROUTE_USERS;
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_NOBODY         => false,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 4,
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_USERAGENT      => 'EzIT-LicenseServer/1.0',
+            ]);
+            curl_exec($ch);
+            $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+        } else {
+            $ctx = stream_context_create([
+                'http'  => ['method' => 'GET', 'timeout' => 4, 'ignore_errors' => true],
+                'ssl'   => ['verify_peer' => true, 'verify_peer_name' => true],
+            ]);
+            $body = @file_get_contents($url, false, $ctx);
+            $status = $body !== false
+                ? (int) (explode(' ', $http_response_header[0] ?? '0')[1] ?? 0)
+                : 0;
+        }
+
+        return $status !== 0 && $status !== 404;
+    }
+
+    /* ── transport ──────────────────────────────────────────────── */
 
     /**
      * @return array{body:?string, error:?string}
