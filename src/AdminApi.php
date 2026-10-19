@@ -1001,12 +1001,18 @@ final class AdminApi
             $match = $stmt->fetch() ?: null;
         }
 
+        $desc = (string) ($hdr['description'] ?? '');
+        // mbstring isn't guaranteed (CloudPanel) — fall back to plain substr.
+        $excerpt = function_exists('mb_strimwidth')
+            ? mb_strimwidth($desc, 0, 160, '…')
+            : (strlen($desc) > 160 ? substr($desc, 0, 157) . '…' : $desc);
+
         $this->json(['data' => [
             'kind'           => $kind,
             'slug'           => $slug,
             'name'           => $name,
             'version'        => $version,
-            'excerpt'        => mb_strimwidth((string) ($hdr['description'] ?? ''), 0, 160, '…'),
+            'excerpt'        => $excerpt,
             'description'    => $readmeDesc ?: ($hdr['description'] ?? null),
             'author'         => $hdr['author'] ?? null,
             'changelog'      => $changelog,

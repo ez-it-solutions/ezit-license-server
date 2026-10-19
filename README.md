@@ -24,6 +24,20 @@ only `platform/core/core.json` is repointed.
 6. On the client site: `Settings → General → License` (or `php artisan cms:license:activate --buyer="Site Name" --purchase_code="CODE"`).
 7. Delete or password-protect `/install` after setup.
 
+**CloudPanel requirements:** PHP's **zip** extension is required for
+`POST /admin-api/package-inspect` (the New-product zip drop). CloudPanel
+PHP builds don't always ship it — install it for the version running the
+site, then restart that site's FPM pool:
+
+```bash
+apt install php8.4-zip -y          # match the site's PHP version (8.2/8.3/8.4…)
+systemctl restart php8.4-fpm
+```
+
+Without it the inspect endpoint returns HTTP 500. The version in
+`php8.x-zip`/`php8.x-fpm` must match the **site's** PHP version
+(CloudPanel → site → PHP Version — `php -v` on the CLI can differ).
+
 **Upgrading an existing install:** upload the files — the schema auto-migrates
 (`products.recovery_code_hash`/`recovery_digest` added; any legacy plaintext
 code is folded into hashes and cleared). Codes are shown **once** at
@@ -111,7 +125,12 @@ new code is minted and shown once).
 ## Update packages
 
 Dashboard → **Updates** publishes a versioned `.zip` per product (plus
-summary/changelog/`has_sql`). Packages land in `data/updates/` and feed
+summary/changelog/`has_sql`). Faster still: **Products → New product →
+drop a .zip** — `POST /admin-api/package-inspect` reads WP plugin/theme
+headers, `readme.txt` and `core.json`/`ezit.json` out of the archive,
+prefills everything, and when the manifest `productId` (or catalog slug /
+name) matches an existing product the modal becomes a one-click
+**publish update**. Packages land in `data/updates/` and feed
 `check_update` (announced only when `version > current_version`),
 `get_update_size`, and `download_update` — downloads require an active
 license on the calling domain. Publishing bumps `products.latest_version`
