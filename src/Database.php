@@ -28,6 +28,11 @@ final class Database
             self::$pdo = new PDO('sqlite:' . $path, null, null, self::options());
             self::$pdo->exec('PRAGMA journal_mode = WAL');
             self::$pdo->exec('PRAGMA foreign_keys = ON');
+            // WAL is single-writer: verify/push traffic overlaps writes,
+            // and SQLITE_BUSY fires the instant the DB is contended.
+            // Wait up to 30s for the other writer to finish instead of
+            // fataling (LicensePush::flush logging took down createUpdate).
+            self::$pdo->exec('PRAGMA busy_timeout = 30000');
         } else {
             $dsn = sprintf(
                 'mysql:host=%s;port=%d;dbname=%s;charset=%s',
@@ -48,6 +53,8 @@ final class Database
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
+            // SQLite honours this as its busy timeout too (seconds).
+            PDO::ATTR_TIMEOUT => 30,
         ];
     }
 
@@ -339,11 +346,17 @@ SQL);
         ?string $detail = null,
         bool $success = false
     ): void {
-        $stmt = $pdo->prepare(
-            'INSERT INTO activity_logs (license_id, action, domain, ip, detail, success)
-             VALUES (?, ?, ?, ?, ?, ?)'
-        );
-        $stmt->execute([$licenseId, $action, $domain, $ip, $detail, $success ? 1 : 0]);
+        // Logging is bookkeeping, never business logic — a contended DB
+        // must not fatal the real operation that ran fine.
+        try {
+            $stmt = $pdo->prepare(
+                'INSERT INTO activity_logs (license_id, action, domain, ip, detail, success)
+                 VALUES (?, ?, ?, ?, ?, ?)'
+            );
+            $stmt->execute([$licenseId, $action, $domain, $ip, $detail, $success ? 1 : 0]);
+        } catch (PDOException $e) {
+            error_log('license-server: activity log write failed: ' . $e->getMessage());
+        }
     }
 
     /**
