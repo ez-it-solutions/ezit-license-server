@@ -139,6 +139,8 @@ CREATE TABLE IF NOT EXISTS updates (
     has_sql      INTEGER NOT NULL DEFAULT 0,
     forced       INTEGER NOT NULL DEFAULT 0,        -- 1 = sites auto-apply without a manual click
     force_at     DATETIME DEFAULT NULL,            -- forced rollout not before this time; NULL = immediately
+    force_targets TEXT DEFAULT NULL,               -- NULL = all sites; JSON array of domains = targeted rollout
+    disabled     INTEGER NOT NULL DEFAULT 0,       -- 1 = hidden from check_update/versions/downloads, row kept
     file_path    VARCHAR(255) DEFAULT NULL,        -- path to update zip on this server
     file_size    INTEGER NOT NULL DEFAULT 0,
     release_date DATE NOT NULL,
@@ -248,6 +250,24 @@ SQL);
         // domain activated one of the listed license codes.
         try {
             $pdo->exec("ALTER TABLE catalog_items ADD COLUMN license_scope TEXT DEFAULT NULL");
+        } catch (PDOException) {
+            // column already exists
+        }
+
+        // updates.force_targets — NULL = all sites; JSON array of
+        // normalized domains = only those sites see forced:true and
+        // receive the update-push (a surgical rollout).
+        try {
+            $pdo->exec('ALTER TABLE updates ADD COLUMN force_targets TEXT DEFAULT NULL');
+        } catch (PDOException) {
+            // column already exists
+        }
+
+        // updates.disabled — pull a release from circulation without
+        // deleting the row: invisible to check_update, /api/versions
+        // and downloads, but the record (and zip) stays for forensics.
+        try {
+            $pdo->exec('ALTER TABLE updates ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0');
         } catch (PDOException) {
             // column already exists
         }

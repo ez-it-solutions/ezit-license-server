@@ -43,6 +43,7 @@ final class LicenseApi
             $path === 'verify_license' => $this->verifyLicense(),
             $path === 'deactivate_license' => $this->deactivateLicense(),
             $path === 'check_update' => $this->checkUpdate(),
+            $path === 'versions' => $this->versions(),
             $path === 'get_config' => $this->getConfig(),
             $path === 'catalog' => $this->catalogList(),
             preg_match('#^catalog/([A-Za-z0-9_-]+)$#', $path, $m) === 1 => $this->catalogItem($m[1]),
@@ -341,8 +342,10 @@ final class LicenseApi
             } catch (\PDOException) { /* registry is best-effort */ }
         }
 
+        // disabled = withdrawn from circulation — the site never hears
+        // about it; the next-enabled release is the effective "latest".
         $stmt = $this->db->prepare(
-            'SELECT * FROM updates WHERE product_id = ? ORDER BY release_date DESC, id DESC LIMIT 1'
+            'SELECT * FROM updates WHERE product_id = ? AND disabled = 0 ORDER BY release_date DESC, id DESC LIMIT 1'
         );
         $stmt->execute([$product['id']]);
         $update = $stmt->fetch();
@@ -361,12 +364,43 @@ final class LicenseApi
             'summary' => $update['summary'],
             'changelog' => $update['changelog'],
             'has_sql' => (bool) $update['has_sql'],
-            // Forced, and past its scheduled time (NULL = immediately) —
-            // a future force_at still reports the update, just not forced.
+            // Forced, past its scheduled time (NULL = immediately), and
+            // this site is inside the target list when one is set — a
+            // targeted rollout reports forced only to named domains.
             'forced' => ! empty($update['forced'])
+                && self::forceAppliesTo($update['force_targets'] ?? null, $this->clientDomain())
                 && ((string) ($update['force_at'] ?? '') === ''
                     || strtotime((string) $update['force_at']) <= time()),
             'config_version' => $this->configVersion(),
+        ]);
+    }
+
+    /**
+     * Release history for the authenticated product — powers the
+     * client site's "pick a version" installer (downgrades included).
+     * Any listed update_id is downloadable via the existing
+     * download_update/main/{id} route under the same auth rules.
+     */
+    private function versions(): void
+    {
+        $product = $this->authenticate();
+
+        $stmt = $this->db->prepare(
+            'SELECT update_id, version, release_date, summary, forced
+             FROM updates WHERE product_id = ? AND disabled = 0
+             ORDER BY release_date DESC, id DESC LIMIT 50'
+        );
+        $stmt->execute([(int) $product['id']]);
+
+        $this->json([
+            'status' => true,
+            'versions' => array_map(static fn (array $r) => [
+                'update_id'    => $r['update_id'],
+                'version'      => $r['version'],
+                'release_date' => substr((string) $r['release_date'], 0, 10),
+                'summary'      => $r['summary'],
+                'forced'       => ! empty($r['forced']),
+            ], $stmt->fetchAll()),
         ]);
     }
 
@@ -659,9 +693,27 @@ final class LicenseApi
         return (bool) array_intersect(array_map('strtoupper', $scope), array_keys($held));
     }
 
+    /**
+     * Is a forced rollout aimed at this site? NULL/empty targets = all
+     * sites; a non-empty JSON array names the domains it applies to.
+     * Malformed data fails OPEN (all sites) rather than silently
+     * un-forcing a release the admin already armed.
+     */
+    private static function forceAppliesTo(?string $targets, string $domain): bool
+    {
+        if ($targets === null || trim($targets) === '') {
+            return true;
+        }
+        $list = json_decode($targets, true);
+        return ! is_array($list) || $list === []
+            || in_array($domain, array_map('strval', $list), true);
+    }
+
     private function findUpdate(int $productId, string $updateId): ?array
     {
-        $stmt = $this->db->prepare('SELECT * FROM updates WHERE product_id = ? AND update_id = ?');
+        // disabled releases can't be fetched even by update_id — the
+        // row stays for records, but nothing may install it again.
+        $stmt = $this->db->prepare('SELECT * FROM updates WHERE product_id = ? AND update_id = ? AND disabled = 0');
         $stmt->execute([$productId, $updateId]);
 
         return $stmt->fetch() ?: null;

@@ -183,6 +183,8 @@
                     <label style="flex-direction:row;align-items:center;gap:.5rem"><input type="checkbox" id="upd-forced" style="width:auto"> <b>Force update</b> — sites auto-apply on next check, no manual click</label>
                     <label id="upd-forceat-wrap" class="hidden">Force at <small style="color:var(--muted)">(blank = immediately — we push to every known site)</small></label>
                     <input type="datetime-local" id="upd-forceat" class="hidden">
+                    <label id="upd-forcetargets-wrap" class="hidden">Force to specific sites <small style="color:var(--muted)">(one domain or URL per line — blank = every site)</small></label>
+                    <textarea id="upd-forcetargets" rows="2" class="hidden" spellcheck="false" placeholder="client-a.com&#10;https://client-b.com"></textarea>
                     <button class="btn btn-primary" type="submit" id="upd-btn">Publish update</button>
                 </form>
             </div>
@@ -482,10 +484,13 @@
         <div class="upd-flags">
             <label class="check"><input type="checkbox" id="ue-hassql"> Contains DB migrations (.sql)</label>
             <label class="check"><input type="checkbox" id="ue-forced"> <b>Force update</b> — sites auto-apply, no manual click</label>
+            <label class="check"><input type="checkbox" id="ue-disabled"> <b>Disable release</b> — sites can't see or download it; the record stays</label>
         </div>
         <div id="ue-forceat-wrap" class="hidden">
             <label>Force at <small style="color:var(--muted)">(blank = immediately — we push to every known site)</small></label>
             <input type="datetime-local" id="ue-forceat">
+            <label>Force to specific sites <small style="color:var(--muted)">(one domain or URL per line — blank = every site)</small></label>
+            <textarea id="ue-forcetargets" rows="2" spellcheck="false" placeholder="client-a.com&#10;https://client-b.com"></textarea>
         </div>
         <p class="hint">The package file is immutable — republish to swap the zip. Clearing Force retracts pending rollouts (sites re-check the flag before applying).</p>
         <div class="modal-actions">

@@ -85,9 +85,16 @@ final class LicensePush
 
     /** Queue an update-push for every known site on this product —
      *  activations AND the product_sites registry — when a forced
-     *  release goes live. */
-    public static function update(PDO $db, int $productDbId, string $reason): void
+     *  release goes live. $targets (normalized domains) limits the
+     *  fan-out for a targeted rollout; null = every known site. */
+    public static function update(PDO $db, int $productDbId, string $reason, ?array $targets = null): void
     {
+        $wanted = $targets === null ? null
+            : array_fill_keys(array_map('strval', $targets), true);
+        $hit = static fn (string $siteUrl): bool =>
+            $wanted === null
+            || isset($wanted[Database::normalizeDomain($siteUrl)]);
+
         $stmt = $db->prepare(
             'SELECT DISTINCT a.site_url, p.api_key, a.license_id
              FROM activations a
@@ -97,7 +104,9 @@ final class LicensePush
         );
         $stmt->execute([$productDbId]);
         foreach ($stmt->fetchAll() as $t) {
-            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => (int) $t['license_id'], 'reason' => $reason, 'path' => self::ENDPOINT_UPDATE];
+            if ($hit((string) $t['site_url'])) {
+                self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => (int) $t['license_id'], 'reason' => $reason, 'path' => self::ENDPOINT_UPDATE];
+            }
         }
 
         $stmt = $db->prepare(
@@ -108,7 +117,9 @@ final class LicensePush
         );
         $stmt->execute([$productDbId]);
         foreach ($stmt->fetchAll() as $t) {
-            self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => null, 'reason' => $reason, 'path' => self::ENDPOINT_UPDATE];
+            if ($hit((string) $t['site_url'])) {
+                self::$queue[] = ['site' => $t['site_url'], 'key' => $t['api_key'], 'license_id' => null, 'reason' => $reason, 'path' => self::ENDPOINT_UPDATE];
+            }
         }
     }
 

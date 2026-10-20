@@ -720,7 +720,7 @@ final class AdminApi
     {
         $rows = $this->db->query(
             'SELECT u.id, u.update_id, u.version, u.summary, u.changelog,
-                    u.has_sql, u.forced, u.force_at, u.file_size, u.release_date, u.created_at,
+                    u.has_sql, u.forced, u.force_at, u.force_targets, u.disabled, u.file_size, u.release_date, u.created_at,
                     p.name AS product_name, p.product_id AS product_code,
                     (u.file_path IS NOT NULL AND u.file_path <> \'\') AS has_file
              FROM updates u JOIN products p ON p.id = u.product_id
@@ -745,6 +745,7 @@ final class AdminApi
         $hasSql    = ! empty($_POST['has_sql']) ? 1 : 0;
         $forced    = ! empty($_POST['forced']) ? 1 : 0;
         $forceAt   = self::forceAt($_POST['force_at'] ?? '');
+        $targets   = self::targets($_POST['force_targets'] ?? '');
         $file      = $_FILES['package'] ?? null;
 
         if ($productId <= 0 || $version === '') {
@@ -795,9 +796,9 @@ final class AdminApi
         }
 
         $this->db->prepare(
-            'INSERT INTO updates (product_id, update_id, version, summary, changelog, has_sql, forced, force_at, file_path, file_size, release_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date(\'now\'))'
-        )->execute([$productId, $updateId, $version, $summary, $changelog, $hasSql, $forced, $forceAt, $dest, $size]);
+            'INSERT INTO updates (product_id, update_id, version, summary, changelog, has_sql, forced, force_at, force_targets, file_path, file_size, release_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date(\'now\'))'
+        )->execute([$productId, $updateId, $version, $summary, $changelog, $hasSql, $forced, $forceAt, $targets, $dest, $size]);
 
         // get_config serves products.latest_version — keep it honest so the
         // bootstrap doc and check_update agree on what "newest" means.
@@ -809,9 +810,11 @@ final class AdminApi
         Database::log($this->db, 'admin_update_publish', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
             $product['name'] . ' ' . $version, true);
 
-        // Published forced-and-due → push every known site to apply now.
+        // Published forced-and-due → push the rollout targets (or every
+        // known site when the release isn't scoped) to apply now.
         if ($forced && ($forceAt === null || strtotime($forceAt) <= time())) {
-            LicensePush::update($this->db, $productId, 'update forced ' . $version);
+            LicensePush::update($this->db, $productId, 'update forced ' . $version,
+                $targets ? json_decode($targets, true) : null);
         }
 
         $this->json(['data' => [
@@ -1093,23 +1096,34 @@ final class AdminApi
         $hasSql    = array_key_exists('has_sql', $b) ? (! empty($b['has_sql']) ? 1 : 0) : (int) $row['has_sql'];
         $forced    = array_key_exists('forced', $b)  ? (! empty($b['forced']) ? 1 : 0)  : (int) $row['forced'];
         $forceAt   = array_key_exists('force_at', $b) ? self::forceAt($b['force_at']) : $row['force_at'];
+        $targets   = array_key_exists('force_targets', $b) ? self::targets($b['force_targets']) : ($row['force_targets'] ?? null);
+        $disabled  = array_key_exists('disabled', $b) ? (! empty($b['disabled']) ? 1 : 0) : (int) ($row['disabled'] ?? 0);
 
         $this->db->prepare(
-            'UPDATE updates SET summary = ?, changelog = ?, has_sql = ?, forced = ?, force_at = ? WHERE id = ?'
-        )->execute([$summary, $changelog, $hasSql, $forced, $forceAt, $id]);
+            'UPDATE updates SET summary = ?, changelog = ?, has_sql = ?, forced = ?, force_at = ?, force_targets = ?, disabled = ? WHERE id = ?'
+        )->execute([$summary, $changelog, $hasSql, $forced, $forceAt, $targets, $disabled, $id]);
+
+        // Disabled toggles change what "latest" means for this product —
+        // latest_version (catalog/get_config) follows enabled releases only.
+        if ($disabled !== (int) ($row['disabled'] ?? 0)) {
+            $this->recomputeLatest((int) $row['product_id']);
+        }
 
         // Force enabled AND due (or unscheduled) → update-push every known
         // site now; they scan + apply within seconds. Future-dated
         // rollouts ride the site's own scan until their time arrives.
         $due = $forceAt === null || strtotime((string) $forceAt) <= time();
-        if ($forced && $due) {
-            LicensePush::update($this->db, (int) $row['product_id'], 'update forced ' . $row['version']);
+        if ($forced && ! $disabled && $due) {
+            LicensePush::update($this->db, (int) $row['product_id'], 'update forced ' . $row['version'],
+                $targets ? (json_decode($targets, true) ?: null) : null);
         }
 
         Database::log($this->db, 'admin_update_edit', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
             $row['product_name'] . ' ' . $row['version']
             . ($forced && ! (int) $row['forced'] ? ' (forced on)'
-               : (! $forced && (int) $row['forced'] ? ' (forced off)' : '')), true);
+               : (! $forced && (int) $row['forced'] ? ' (forced off)' : ''))
+            . ($disabled !== (int) ($row['disabled'] ?? 0)
+               ? ($disabled ? ' (disabled)' : ' (re-enabled)') : ''), true);
 
         $this->json(['ok' => true]);
     }
@@ -1124,6 +1138,44 @@ final class AdminApi
         }
         $ts = strtotime($v);
         return $ts ? date('Y-m-d H:i:s', $ts) : null;
+    }
+
+    /**
+     * Keep products.latest_version honest — it feeds get_config and the
+     * catalog card, so it must name the newest ENABLED release. Called
+     * when a release is disabled/re-enabled or deleted.
+     */
+    private function recomputeLatest(int $productId): void
+    {
+        $stmt = $this->db->prepare(
+            'SELECT version FROM updates WHERE product_id = ? AND disabled = 0
+             ORDER BY release_date DESC, id DESC LIMIT 1'
+        );
+        $stmt->execute([$productId]);
+        $version = $stmt->fetchColumn();
+        if ($version !== false && $version !== null) {
+            $this->db->prepare('UPDATE products SET latest_version = ? WHERE id = ?')
+                ->execute([(string) $version, $productId]);
+        }
+    }
+
+    /**
+     * Normalize a force_targets input — JSON array, or a free-form list
+     * of domains/URLs separated by newlines/commas/whitespace — into a
+     * JSON array of normalized domains. Empty/blank → null (all sites).
+     */
+    private static function targets($v): ?string
+    {
+        $in = is_array($v) ? $v : preg_split('/[\s,;]+/', (string) $v);
+        $out = [];
+        foreach ($in ?: [] as $d) {
+            $d = trim((string) $d);
+            if ($d !== '') {
+                $out[] = Database::normalizeDomain($d);
+            }
+        }
+        $out = array_values(array_unique(array_filter($out)));
+        return $out ? json_encode($out) : null;
     }
 
     private function deleteUpdate(int $id): void
@@ -1144,6 +1196,7 @@ final class AdminApi
             unlink($file);
         }
         $this->db->prepare('DELETE FROM updates WHERE id = ?')->execute([$id]);
+        $this->recomputeLatest((int) $row['product_id']); // deleting the latest could leave latest_version stale
 
         Database::log($this->db, 'admin_update_delete', null, null, $_SERVER['REMOTE_ADDR'] ?? null,
             $row['product_name'] . ' ' . $row['version'], true);

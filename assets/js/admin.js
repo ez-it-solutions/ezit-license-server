@@ -456,15 +456,19 @@
         const r = await api('updates');
         updates = r.data;
         $('#updates-table tbody').innerHTML = r.data.length
-            ? r.data.map((u) => `<tr>
+            ? r.data.map((u) => `<tr${+u.disabled ? ' style="opacity:.5"' : ''}>
                 <td>${esc(u.product_name)}<br><small style="color:var(--muted)">${esc(u.product_code)}</small></td>
                 <td class="mono">${esc(u.version)}</td>
                 <td>${esc(String(u.release_date || '').slice(0, 10))}</td>
                 <td>${u.has_file ? fmtSize(u.file_size) : '<span class="badge badge-fail">missing</span>'}</td>
-                <td>${((u.has_sql ? '<span class="badge badge-suspended">sql</span> ' : '') + (+u.forced ? `<span class="badge badge-fail">forced</span>${u.force_at ? `<br><small style="color:var(--muted)">${esc(String(u.force_at).slice(0, 16))}</small>` : ''}` : '')) || '—'}</td>
+                <td>${((u.has_sql ? '<span class="badge badge-suspended">sql</span> ' : '')
+                    + (+u.forced ? `<span class="badge badge-fail">forced</span>${u.force_at ? `<br><small style="color:var(--muted)">${esc(String(u.force_at).slice(0, 16))}</small>` : ''}` : '')
+                    + (u.force_targets ? ` <small style="color:var(--muted)">&rarr; ${JSON.parse(u.force_targets || '[]').length} site(s)</small>` : '')
+                    + (+u.disabled ? ' <span class="badge badge-fail">disabled</span>' : '')) || '—'}</td>
                 <td>${esc(u.summary || '')}</td>
                 <td><div class="row-actions">
                     <button class="btn ${+u.forced ? 'btn-danger' : 'btn-ghost'}" onclick="EZL.forceUpdate(${u.id}, ${+u.forced ? 0 : 1})">${+u.forced ? 'Unforce' : 'Force'}</button>
+                    <button class="btn btn-ghost" onclick="EZL.toggleDisabled(${u.id}, ${+u.disabled ? 0 : 1})">${+u.disabled ? 'Enable' : 'Disable'}</button>
                     <button class="btn btn-ghost" onclick="EZL.editUpdate(${u.id})">Edit</button>
                     <button class="btn btn-danger" onclick="EZL.deleteUpdate(${u.id})">Delete</button>
                 </div></td></tr>`).join('')
@@ -474,11 +478,13 @@
     $('#upd-file').addEventListener('change', (e) => {
         $('#upd-file-name').textContent = e.target.files[0]?.name || 'No file chosen';
     });
-    // "Force at" only matters when the update is forced.
+    // "Force at" and target list only matter when the update is forced.
     $('#upd-forced').addEventListener('change', (e) => {
         const on = e.target.checked;
         $('#upd-forceat').classList.toggle('hidden', !on);
         $('#upd-forceat-wrap').classList.toggle('hidden', !on);
+        $('#upd-forcetargets').classList.toggle('hidden', !on);
+        $('#upd-forcetargets-wrap').classList.toggle('hidden', !on);
     });
     $('#update-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -495,6 +501,7 @@
         if ($('#upd-forced').checked) {
             fd.append('forced', '1');
             if ($('#upd-forceat').value) fd.append('force_at', $('#upd-forceat').value);
+            if ($('#upd-forcetargets').value.trim()) fd.append('force_targets', $('#upd-forcetargets').value.trim());
         }
         fd.append('package', $('#upd-file').files[0]);
         try {
@@ -538,9 +545,23 @@
         $('#ue-changelog').value = u.changelog || '';
         $('#ue-hassql').checked = !!+u.has_sql;
         $('#ue-forced').checked = !!+u.forced;
+        $('#ue-disabled').checked = !!+u.disabled;
         $('#ue-forceat').value = u.force_at ? String(u.force_at).slice(0, 16).replace(' ', 'T') : '';
+        $('#ue-forcetargets').value = u.force_targets ? (JSON.parse(u.force_targets) || []).join('\n') : '';
         $('#ue-forceat-wrap').classList.toggle('hidden', !+u.forced);
         $('#update-modal').classList.remove('hidden');
+    };
+
+    /* Disable pulls a release from circulation — check_update, the
+     * version picker and downloads all stop seeing it, but the row
+     * (and zip) stays on the server for forensics. Reversible. */
+    window.EZL.toggleDisabled = async (id, on) => {
+        if (on && !await askConfirm('Disable this release? Sites will no longer see or download it. The record is kept and can be re-enabled.', 'Disable')) return;
+        try {
+            await api('updates/' + id, { method: 'PUT', body: { disabled: on } });
+            toast(on ? 'Release disabled — invisible to sites' : 'Release re-enabled');
+        } catch (e) { toast('Failed: ' + e.message); return; }
+        loadUpdates();
     };
 
     $('#ue-forced').addEventListener('change', (e) => {
@@ -558,6 +579,8 @@
                 has_sql:   $('#ue-hassql').checked ? 1 : 0,
                 forced:    $('#ue-forced').checked ? 1 : 0,
                 force_at:  $('#ue-forced').checked ? $('#ue-forceat').value : '',
+                force_targets: $('#ue-forced').checked ? $('#ue-forcetargets').value.trim() : '',
+                disabled:  $('#ue-disabled').checked ? 1 : 0,
             }});
             $('#update-modal').classList.add('hidden');
             toast('Update ' + editingUpdate.version + ' saved');
